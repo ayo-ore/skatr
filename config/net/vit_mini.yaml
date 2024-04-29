@@ -1,9 +1,11 @@
 arch: ViT
-in_shape: [70, 70, 1175]
+in_shape: [1, 70, 70, 1175]
 out_channels: 6
 patch_shape: [7, 7, 47]
 condition_dim: 46
-hidden_dim: 256
+# multiple of 6, started at 240
+hidden_dim: 240
+# started at 4
 depth: 4
 num_heads: 4
 mlp_ratio: 2.0
@@ -14,3 +16,5 @@ learn_pos_encoding: True
 # final_conv_channels: None
 long_skips: False
 out_act: sigmoid
+
+# experiment with: patch_shape, hidden_dim, depth, num_heads?, learn_pos_encoding? 

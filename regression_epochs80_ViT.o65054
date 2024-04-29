@@ -1,0 +1,24 @@
+[2024-04-26 17:41:38,622][Experiment][INFO] - Reading data
+[2024-04-26 17:41:38,622][Experiment][INFO] - Initializing dataloaders
+/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/utils/data/dataset.py:449: UserWarning: Length of split at index 0 is 0. This might result in an empty dataset.
+  warnings.warn(f"Length of split at index {i} is 0. "
+/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/utils/data/dataset.py:449: UserWarning: Length of split at index 1 is 0. This might result in an empty dataset.
+  warnings.warn(f"Length of split at index {i} is 0. "
+Error executing job with overrides: ['submit=True', 'cluster.node=1', 'submit=False']
+Traceback (most recent call last):
+  File "/remote/gpu00/nordmann/skatr/./main.py", line 36, in main
+    experiment.run()
+  File "/remote/gpu00/nordmann/skatr/src/experiments/base_experiment.py", line 29, in run
+    dataloaders = self.get_dataloaders(dataset)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/skatr/src/experiments/base_experiment.py", line 77, in get_dataloaders
+    k: DataLoader(
+       ^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 350, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/utils/data/sampler.py", line 143, in __init__
+    raise ValueError(f"num_samples should be a positive integer value, but got num_samples={self.num_samples}")
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

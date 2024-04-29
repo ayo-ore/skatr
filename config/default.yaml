@@ -21,6 +21,7 @@ data:
 training:
   epochs: 1
   lr: 1.e-3
+  # number of light cones in parallel
   batch_size: 32
   use_scheduler: False
   gradient_norm: null
@@ -38,3 +39,6 @@ defaults:
   # - schedule ?
   - hydra
   - _self_
+
+  # experiment with: epochs, lr
+  # memory grows with batch_size
