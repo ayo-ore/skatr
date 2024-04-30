@@ -1,0 +1,15 @@
+[2024-04-29 20:35:17,179][Experiment][INFO] - Reading data
+[2024-04-29 22:56:48,777][Experiment][INFO] - Initializing dataloaders
+[2024-04-29 22:56:48,888][Experiment][INFO] - Using device cuda:0
+[2024-04-29 22:56:48,889][Experiment][INFO] - Initializing model
+[2024-04-29 22:56:53,815][Experiment][INFO] - Model (Regressor[ViT]) has 3387246 parameters
+[2024-04-29 22:56:53,816][Experiment][INFO] - Initializing trainer
+[2024-04-29 22:56:53,816][Experiment][INFO] - Running training
+[2024-04-29 22:56:53,816][Trainer][INFO] - Preparing model training
+[2024-04-29 22:56:53,973][Trainer][INFO] - Writing tensorboard summaries to dir /remote/gpu00/nordmann/skatr/runs/regression_ViT_H240:D6:Heads4:LR1/2024-04-29_16-37-39
+[2024-04-29 22:56:53,975][Trainer][INFO] - Beginning training loop with epochs set to 200
+[2024-04-29 22:58:29,420][Trainer][INFO] - Training time estimate: 318.15 min = 5.30 h
+[2024-04-30 04:04:17,551][Trainer][INFO] - Finished training 200 epochs after 18443.58 s = 307.39 min = 5.12 h.
+[2024-04-30 04:04:17,552][Trainer][INFO] - Saving final model
+[2024-04-30 04:04:18,333][Experiment][INFO] - Running evaluation
+[2024-04-30 04:04:51,175][Experiment][INFO] - Making plots

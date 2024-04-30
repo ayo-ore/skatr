@@ -1,14 +1,14 @@
-run_name: regression_${net.arch}
+run_name: regression_${net.arch}_H240:D4:Heads6:LR1
 experiment: RegressionExperiment
 data:
   not stored in gpu:
   # also use cluster.node=1 (no preferred gpu)
   #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x2
   # stored gpu01:
-  dir: /scratch2/heneka/21cmlightcones/pure_simulations/x2
+  #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x2
   # stored gpu02:
-  # dir: /scratch/ore/data/x2
-  # in pbs.yaml node: gpu01
+  dir: /scratch/ore/data/x2
+  # in pbs.yaml node: gpu02
   # increasingly worse with growing epochs
   file_by_file: False
 

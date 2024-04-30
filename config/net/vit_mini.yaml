@@ -7,7 +7,7 @@ condition_dim: 46
 hidden_dim: 240
 # started at 4
 depth: 4
-num_heads: 4
+num_heads: 6
 mlp_ratio: 2.0
 attn_drop: 0.
 proj_drop: 0.

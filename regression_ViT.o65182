@@ -1,0 +1,12 @@
+[2024-04-29 13:06:16,605][Experiment][INFO] - Reading data
+[2024-04-29 13:10:54,728][Experiment][INFO] - Initializing dataloaders
+[2024-04-29 13:10:54,861][Experiment][INFO] - Using device cuda:0
+[2024-04-29 13:10:54,861][Experiment][INFO] - Initializing model
+[2024-04-29 13:11:22,095][Experiment][INFO] - Model (Regressor[ViT]) has 8726166 parameters
+[2024-04-29 13:11:22,095][Experiment][INFO] - Initializing trainer
+[2024-04-29 13:11:22,096][Experiment][INFO] - Running training
+[2024-04-29 13:11:22,097][Trainer][INFO] - Preparing model training
+[2024-04-29 13:11:22,265][Trainer][INFO] - Writing tensorboard summaries to dir /remote/gpu00/nordmann/skatr/runs/regression_ViT/2024-04-29_13-04-46
+[2024-04-29 13:11:22,265][Trainer][INFO] - Beginning training loop with epochs set to 200
+[2024-04-29 13:13:15,936][Trainer][INFO] - Training time estimate: 378.90 min = 6.32 h
+/var/spool/torque/mom_priv/jobs/65182.gpu01.itp.uni-heidelberg.de.SC: line 9:  8955 Killed                  ./main.py submit=True submit=False hydra.run.dir=/remote/gpu00/nordmann/skatr/runs/regression_ViT/2024-04-29_13-04-46
