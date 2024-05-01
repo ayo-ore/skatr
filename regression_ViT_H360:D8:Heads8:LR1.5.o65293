@@ -1,0 +1,63 @@
+[2024-04-30 22:27:38,707][Experiment][INFO] - Reading data
+[2024-04-30 22:27:38,717][Experiment][INFO] - Initializing dataloaders
+[2024-04-30 22:27:38,737][Experiment][INFO] - Using device cuda:0
+[2024-04-30 22:27:38,737][Experiment][INFO] - Initializing model
+[2024-04-30 22:27:39,662][Experiment][INFO] - Model (Regressor[ViT]) has 9276306 parameters
+[2024-04-30 22:27:39,663][Experiment][INFO] - Initializing trainer
+[2024-04-30 22:27:39,663][Experiment][INFO] - Running training
+[2024-04-30 22:27:39,663][Trainer][INFO] - Preparing model training
+[2024-04-30 22:27:39,747][Trainer][INFO] - Writing tensorboard summaries to dir /remote/gpu00/nordmann/skatr/runs/regression_ViT_H360:D8:Heads8:LR1.5/2024-04-30_18-32-08
+[2024-04-30 22:27:39,747][Trainer][INFO] - Beginning training loop with epochs set to 200
+Error executing job with overrides: ['submit=True', 'submit=False']
+Traceback (most recent call last):
+  File "/remote/gpu00/nordmann/skatr/./main.py", line 36, in main
+    experiment.run()
+  File "/remote/gpu00/nordmann/skatr/src/experiments/base_experiment.py", line 47, in run
+    trainer.run_training()
+  File "/remote/gpu00/nordmann/skatr/src/trainers/trainer.py", line 93, in run_training
+    self.train_one_epoch()
+  File "/remote/gpu00/nordmann/skatr/src/trainers/trainer.py", line 142, in train_one_epoch
+    loss = self.model.batch_loss(x)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/skatr/src/models/regressor.py", line 9, in batch_loss
+    y_pred = self(x)
+             ^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/skatr/src/models/regressor.py", line 14, in forward
+    return self.net(x)
+           ^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/skatr/src/networks/vit.py", line 93, in forward
+    x = block(x) # (B, T, D)
+        ^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/skatr/src/networks/vit.py", line 129, in forward
+    x = x + self.attn(self.norm1(x))
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/remote/gpu00/nordmann/.conda/envs/skatr/lib/python3.12/site-packages/timm/models/vision_transformer.py", line 91, in forward
+    x = F.scaled_dot_product_attention(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 5.96 GiB. GPU 0 has a total capacity of 23.49 GiB of which 2.89 GiB is free. Including non-PyTorch memory, this process has 20.58 GiB memory in use. Of the allocated memory 15.49 GiB is allocated by PyTorch, and 4.83 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

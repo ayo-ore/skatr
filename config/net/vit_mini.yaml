@@ -1,13 +1,14 @@
 arch: ViT
 in_shape: [1, 70, 70, 1175]
 out_channels: 6
+# embedding size
 patch_shape: [7, 7, 47]
 condition_dim: 46
 # multiple of 6, started at 240
-hidden_dim: 240
+hidden_dim: 360
 # started at 4
-depth: 4
-num_heads: 6
+depth: 8
+num_heads: 8
 mlp_ratio: 2.0
 attn_drop: 0.
 proj_drop: 0.
