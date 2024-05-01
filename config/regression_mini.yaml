@@ -1,4 +1,8 @@
-run_name: regression_${net.arch}_H360:D8:Heads8:LR1.5
+<<<<<<< HEAD
+run_name: regression_mini_${net.arch}
+=======
+run_name: regression_mini_${net.arch}
+>>>>>>> main
 experiment: RegressionExperiment
 data:
   not stored in gpu:
