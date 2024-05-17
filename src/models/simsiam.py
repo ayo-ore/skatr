@@ -1,8 +1,18 @@
 from .base_model import Model
 
+from .. import networks
+from .base_model import Model
+
 class SimSiam(Model):
+
+    def __init__(self, cfg:DictConfig):
+
+        self.predictor = networks.MLP(cfg.predictor)
+        super().__init__(self, cfg)
+
     self.num_augmentations
     self.augmentation_type = 'rotation'
+    
     def batch_loss(self, batch):
     #xx what is batch.shape
 
