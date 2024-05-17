@@ -14,3 +14,4 @@ learn_pos_encoding: True
 # final_conv_channels: None
 long_skips: False
 out_act: sigmoid
+out_mlp: False

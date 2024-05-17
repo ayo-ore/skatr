@@ -3,11 +3,9 @@
 import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.utils.checkpoint as cp
+
 from einops import rearrange
 from timm.models.vision_transformer import Attention, Mlp
-
 
 class ViT(nn.Module):
     """
@@ -61,7 +59,7 @@ class ViT(nn.Module):
         #     self.final_layer = FinalLayer(cfg.hidden_dim, cfg.patch_shape, final_conv_channels)
         #     self.conv_layer = nn.Conv3d(final_conv_channels, in_channels, kernel_size=3, padding=1)
         # else:
-        self.final_layer = FinalProj(cfg.hidden_dim, cfg.patch_shape, cfg.out_channels, cfg.out_act)
+        self.final_layer = FinalProj(cfg.hidden_dim, cfg.patch_shape, cfg.out_channels, cfg.out_mlp)
 
     def pos_encoding(self): # TODO: Simplify for fixed dim=3
         grids = [getattr(self, f'grid_{i}') for i in range(3)]
@@ -83,6 +81,7 @@ class ViT(nn.Module):
         """
         Forward pass of ViT.
         x: (B, C, *axis_sizes) tensor of spatial inputs
+        c: (B, K) tensor of conditions
         """
         
         x = self.to_patches(x)                       # (B, T, D), where T = prod(num_patches)
@@ -133,13 +132,14 @@ class Block(nn.Module):
 
 class FinalProj(nn.Module):
     # TODO: get rid of class and just define layers in ViT.__init__
-    def __init__(self, hidden_dim, patch_shape, out_channels, act=None):
+    def __init__(self, hidden_dim, patch_shape, out_channels, mlp=False):
         super().__init__()
+        self.mlp = mlp
         self.linear1 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, out_channels)
+        self.linear2 = nn.Linear(hidden_dim, hidden_dim if mlp else out_channels)
+        self.linear3 = nn.Linear(hidden_dim, out_channels)
         self.norm1 = nn.LayerNorm(hidden_dim, elementwise_affine=False, eps=1e-6)
         self.norm2 = nn.LayerNorm(hidden_dim, elementwise_affine=False, eps=1e-6)
-        self.act = getattr(F, act) if act else nn.Identity()
 
     def forward(self, x):
         x = self.norm1(x)
@@ -147,5 +147,7 @@ class FinalProj(nn.Module):
         x = torch.mean(x, axis=1)
         x = self.norm2(x)
         x = self.linear2(x)
-        x = self.act(x)
+        if self.mlp:
+            x = F.relu(x)
+            x = self.linear3(x)
         return x

@@ -1,2 +1,0 @@
-[2024-04-29 12:59:09,639][Experiment][INFO] - Reading data
-/var/spool/torque/mom_priv/jobs/65181.gpu01.itp.uni-heidelberg.de.SC: line 9:  8031 Killed                  ./main.py submit=True submit=False hydra.run.dir=/remote/gpu00/nordmann/skatr/runs/regression_ViT/2024-04-29_12-58-47
