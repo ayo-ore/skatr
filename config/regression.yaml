@@ -8,8 +8,13 @@ data:
 preprocessing:
   AddSingletonChannel: {}
   Center: {}
+
+training:
+  epochs: 220
+  lr: 1.e-4
+  batch_size: 32
   
 defaults:
   - default
-  - net: cnn
+  - net: vit
   - _self_

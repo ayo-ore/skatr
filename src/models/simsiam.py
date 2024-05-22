@@ -16,7 +16,7 @@ class SimSiam(Model):
 
     def batch_loss(self, batch):
     #xx what is batch.shape
-    # TODO: check functionality, add reflections
+    # TODO: check functionality
 
         def augment(x, augmentation):
             def random_ints(max):
@@ -26,67 +26,62 @@ class SimSiam(Model):
             def random_int(max):
                 return random.randint(0, max)
 
-            if 'rotation' in augmentation and 'reflection' in augmentation:
+            def rotate(x1, x2):
                 i1, i2 = random_ints(3) # random integers [0, 3]
-                x1 = torch.rot90(x, i1, dims=[1,0]) # rotate between [0, 3] times
-                x2 = torch.rot90(x, i2, dims=[1,0])
+                x1 = torch.rot90(x1, i1, dims=[2,3]) # rotate between [0, 3] times
+                x2 = torch.rot90(x2, i2, dims=[2,3])
+                return x1, x2
+            
+            def reflect(x1, x2):
                 i = random_int(3)
-                if i == 0:
-                    x1 = x1.transpose(x1, 0, 1)
+                if i == 1:
+                    x1 = x1.transpose(2, 3)
                 if i == 2:
-                    x2 = x2.transpose(x1, 0, 1)
+                    x2 = x2.transpose(2, 3)
+                if i == 3:
+                    x1 = x1.transpose(2, 3)
+                    x2 = x2.transpose(2, 3)
                 return x1, x2
+            
+            if 'rotation' in augmentation and 'reflection' in augmentation:
+                x1, x2 = rotate(x, x)
+                x1, x2 = reflect(x1, x2)
+                
+            # check if same augmentation was applied
+            diff = torch.sum(x1[2]-x2[2]) + torch.sum(x1[3]-x2[3])
+            heat = torch.sum(x1[2])
+            if abs(diff) < 1.e-11:
+                if abs(heat) > 1.e-8:
+                    del x1, x2
+                    return augment(x, augmentation)
 
-            '''if augmentation == 'rotation':
-                i1, i2 = random_ints(3) # random integers [0, 3]
-                x1 = torch.rot90(x, i1, dims=[1,0]) # rotate between [0, 3] times
-                x2 = torch.rot90(x, i2, dims=[1,0])
-                return x1, x2
-
-            else:
-                raise('Selected augmentations faulty')'''
+            return x1, x2
 
         def cosSim(p, z):
+            # TODO eps eps=1e-6
             CosineSimilarity = torch.nn.CosineSimilarity(dim=1, eps=1e-6)
             z = z.detach() # stop gradient
             return CosineSimilarity(p, z)
         
+        # TODO dipose of [0]
         x = batch[0]
 
         # augment / mask batch
-        x1, x2 = augment(x, ['rotation'])
+        x1, x2 = augment(x, ['rotation', 'reflection'])
 
-        diff = x1-x2
-        if diff < something:
-            continue
+        # TODO masking
+        #z1 = self(x1, masking=True)
 
         # embed original and transformed batch
         z1 = self(x1)
         z2 = self(x2)
-
         # predict original from embedding of transformed
         p1 = self.predictor(z1)
         p2 = self.predictor(z2)
 
         # symmetric loss using stopgrad on z
-        loss = - cosSim(p1, z2)
+        loss = - 0.5 * torch.mean( cosSim(p1, z2) + cosSim(p2, z1) )
 
-        '''loss = 0
-        for i in range(self.aug_num):
-            # augment / mask batch
-            x1, x2 = augment(x, 'rotation')
-
-            # embed original and transformed batch
-            z1 = self(x1)
-            z2 = self(x2)
-            
-            # predict original from embedding of transformed
-            p1 = self.predictor(z1)
-            p2 = self.predictor(z2)
-
-            # symmetric loss using stopgrad on z
-            loss += - 0.5 * ( cosSim(p1, z2) + cosSim(p2, z1) ) / self.aug_num'''
-        #print(f"{loss=}")
         return loss
     
     def forward(self, x):

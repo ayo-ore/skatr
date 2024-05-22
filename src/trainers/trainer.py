@@ -140,10 +140,11 @@ class Trainer:
 
             # calculate batch loss
             loss = self.model.batch_loss(x)
+            print(f'trainer {loss=}')
             # check for nans / infs in loss
             loss_numpy = loss.detach().cpu().numpy()
             if ~np.isfinite(loss_numpy):
-                log.info(f"Unstable loss. Skipping backprop for epoch {self.epoch}")
+                log.info(f"Unstable loss contains infinity. Skipping backprop for epoch {self.epoch}")
                 continue
 
             # propagate gradients
