@@ -3,6 +3,7 @@ in_shape: [1, 70, 70, 1175]
 out_channels: 6
 # embedding size?
 # patch_shape: [7, 7, 47] # 10 x 10 x 25 = 2500 tokens with 7x7x47 = 2300 voxels
+<<<<<<< HEAD
 patch_shape: [7, 7, 25] # 10 x 10 x 45 = 4500 tokens with 7x7x25 = 1225 voxels
 #patchx: 7
 #patchz: 25
@@ -12,6 +13,10 @@ patch_shape: [7, 7, 25] # 10 x 10 x 45 = 4500 tokens with 7x7x25 = 1225 voxels
 # embedding size?
 #hidden_dim: 240
 # /2 /2 /5 = /20 as patches 
+=======
+patch_shape: [7, 7, 25] # 10 x 10 x 45 = 4500 tokens with 7x7x47 = 1225 voxels
+mask_frac: 0.
+>>>>>>> main
 hidden_dim: 240
 depth: 2
 num_heads: 4
@@ -19,12 +24,15 @@ mlp_ratio: 2.0
 # up to .5
 attn_drop: 0.
 proj_drop: 0.
+<<<<<<< HEAD
 mlp_drop: 0.25
+=======
+mlp_drop: 0.
+>>>>>>> main
 learn_pos_encoding: True
-# final_conv: False
-# final_conv_channels: None
 long_skips: False
 out_act: sigmoid
+<<<<<<< HEAD
 out_mlp: True
 # self implemented
 aug_num: 4
@@ -35,3 +43,6 @@ aug_type: rotation
 # dropout for overfitting
 # hidden dim in order of voxels
 # 1) hidden dim ratio to patch shape 2) depth
+=======
+checkpoint_grads: False
+>>>>>>> main
