@@ -4,17 +4,21 @@ experiment: SimSiamExperiment
 # 6 arbitrary (depending on ViT implementation)
 # TODO pass to ViT
 latent_dim: 6
+
+evaluate: False
+plot: False
+
 net:
   out_channels: ${latent_dim}
 
 data:
   # not stored in gpu:
   # also use cluster.node=1 (no preferred gpu)
-  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x2
+  #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x2
   # stored gpu01:
   #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x2
   # stored gpu02:
-  #dir: /scratch/ore/data/x2
+  dir: /scratch/ore/data/x2
   # in pbs.yaml node: gpu02
   # increasingly worse with growing epochs
   file_by_file: True
@@ -26,7 +30,7 @@ preprocessing:
   CenterXOnly: {}
 
 training:
-  epochs: 15
+  epochs: 12
   lr: 0.0001
   batch_size: 32
 

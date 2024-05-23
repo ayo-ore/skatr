@@ -140,7 +140,6 @@ class Trainer:
 
             # calculate batch loss
             loss = self.model.batch_loss(x)
-            print(f'trainer {loss=}')
             # check for nans / infs in loss
             loss_numpy = loss.detach().cpu().numpy()
             if ~np.isfinite(loss_numpy):
