@@ -1,27 +1,28 @@
 #run_name: regression_mini_${net.arch}_P${net.patchx}x${net.patchz}:H${net.hidden_dim}:D${net.depth}:Hs${net.num_heads}
-run_name: siam_mini_${net.arch}:debug #_H$:drop_test #{net.hidden_dim}:D${net.depth}:Hs${net.num_heads} #:drop${net.proj_drop}:out_mlp #:big_zpatch
+run_name: simsiam:m${net.mask_frac}:z${latent_dim}:p${predictor_dim} #_H$:drop_test #${net.hidden_dim}:D${net.depth}:Hs${net.num_heads} #:drop${net.proj_drop}:out_mlp #:big_zpatch
 experiment: SimSiamExperiment
 # 6 arbitrary (depending on ViT implementation)
 # TODO pass to ViT
-latent_dim: 6
-
+latent_dim: 15
+predictor_dim: 25
 evaluate: False
 plot: False
 
 net:
   out_channels: ${latent_dim}
+  mask_frac: 0.15
 
 data:
   # not stored in gpu:
   # also use cluster.node=1 (no preferred gpu)
-  #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x2
+  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
   # stored gpu01:
-  #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x2
+  #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x5
   # stored gpu02:
-  dir: /scratch/ore/data/x2
+  #dir: /scratch/ore/data/x2
   # in pbs.yaml node: gpu02
   # increasingly worse with growing epochs
-  file_by_file: True
+  file_by_file: False
 
 preprocessing:
   #AddSingletonChannel: {}
@@ -30,17 +31,22 @@ preprocessing:
   CenterXOnly: {}
 
 training:
-  epochs: 12
-  lr: 0.0001
-  batch_size: 32
+  epochs: 15
+  lr: 0.1
+  batch_size: 64
+  aug_num: 1
+  # only rotation
+  aug_type: 
+    - rotation
+    - reflection
 
 predictor:
   # 100 and numer of layers arbitrary (depending on ViT implementation)
   # bottleneck in reference to latent dim
   units:
     - ${latent_dim}
-    - 100
-    - 100
+    - ${predictor_dim}
+    - ${predictor_dim}
     - ${latent_dim}
   act: relu
   out_act: null
@@ -48,5 +54,5 @@ predictor:
   
 defaults:
   - default
-  - net: vit_mini
+  - net: vit_micro
   - _self_

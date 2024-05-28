@@ -10,7 +10,7 @@ from src import utils
 
 log = logging.getLogger(__name__)
 
-@hydra.main(config_path='config', config_name='regression_mini', version_base=None)
+@hydra.main(config_path='config', config_name='regression_micro', version_base=None)
 def main(cfg:DictConfig):
     
     hcfg = HydraConfig.get()

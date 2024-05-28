@@ -4,15 +4,9 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-<<<<<<< HEAD
-
-from einops import rearrange
-from timm.models.vision_transformer import Attention, Mlp
-=======
 from einops import rearrange, repeat
 from timm.models.vision_transformer import Attention, Mlp
 from torch.utils.checkpoint import checkpoint
->>>>>>> main
 
 class ViT(nn.Module):
     """
@@ -87,13 +81,8 @@ class ViT(nn.Module):
     def forward(self, x, mask=False):
         """
         Forward pass of ViT.
-<<<<<<< HEAD
-        x: (B, C, *axis_sizes) tensor of spatial inputs
-        c: (B, K) tensor of conditions
-=======
         x   : tensor of spatial inputs with shape (B, C, *axis_sizes)
         mask: whether or not mask patches (for self supervision).
->>>>>>> main
         """
 
         # patchify input and embed

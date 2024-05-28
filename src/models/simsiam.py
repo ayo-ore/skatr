@@ -11,14 +11,14 @@ class SimSiam(Model):
     def __init__(self, cfg:DictConfig):
         super().__init__(cfg)
         self.predictor = networks.MLP(cfg.predictor)
-        self.aug_num = cfg.net.aug_num
-        self.aug_type = cfg.net.aug_type
+        self.aug_num = cfg.training.aug_num
+        self.aug_type = cfg.training.aug_type
 
     def batch_loss(self, batch):
     #xx what is batch.shape
     # TODO: check functionality
 
-        def augment(x, augmentation):
+        def augment(x):
             def random_ints(max):
                 rand_arr = random.sample(range(0, max+1), 2)
                 return rand_arr[0], rand_arr[1]
@@ -43,8 +43,11 @@ class SimSiam(Model):
                     x2 = x2.transpose(2, 3)
                 return x1, x2
             
-            if 'rotation' in augmentation and 'reflection' in augmentation:
-                x1, x2 = rotate(x, x)
+            # apply augmentations
+            x1, x2 = x, x
+            if 'rotation' in self.aug_type:
+                x1, x2 = rotate(x1, x2)
+            if 'reflection' in self.aug_type:
                 x1, x2 = reflect(x1, x2)
                 
             # check if same augmentation was applied
@@ -53,7 +56,7 @@ class SimSiam(Model):
             if abs(diff) < 1.e-11:
                 if abs(heat) > 1.e-8:
                     del x1, x2
-                    return augment(x, augmentation)
+                    return augment(x)
 
             return x1, x2
 
@@ -63,25 +66,28 @@ class SimSiam(Model):
             z = z.detach() # stop gradient
             return CosineSimilarity(p, z)
         
-        # TODO dipose of [0]
-        x = batch[0]
+        loss = 0
+        for i in range(self.aug_num):
+            # TODO dipose of [0]
+            x = batch[0]
+            # augment / mask batch
+            x1, x2 = augment(x)
 
-        # augment / mask batch
-        x1, x2 = augment(x, ['rotation', 'reflection'])
+            # TODO masking
+            #z1 = self(x1, masking=True)
 
-        # TODO masking
-        #z1 = self(x1, masking=True)
+            # embed original and transformed batch
+            z1 = self(x1)
+            z2 = self(x2)
 
-        # embed original and transformed batch
-        z1 = self(x1)
-        z2 = self(x2)
-        # predict original from embedding of transformed
-        p1 = self.predictor(z1)
-        p2 = self.predictor(z2)
+            # predict original from embedding of transformed
+            p1 = self.predictor(z1)
+            p2 = self.predictor(z2)
 
-        # symmetric loss using stopgrad on z
-        loss = - 0.5 * torch.mean( cosSim(p1, z2) + cosSim(p2, z1) )
-
+            # symmetric loss using stopgrad on z
+            loss += - 0.5 * ( cosSim(p1, z2) + cosSim(p2, z1) )
+        
+        loss = torch.mean(loss)/self.aug_num
         return loss
     
     def forward(self, x):
