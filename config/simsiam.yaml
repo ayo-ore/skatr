@@ -4,7 +4,7 @@ experiment: SimSiamExperiment
 # 6 arbitrary (depending on ViT implementation)
 # TODO pass to ViT
 latent_dim: 15
-predictor_dim: 25
+predictor_dim: 30
 evaluate: False
 plot: False
 
@@ -31,14 +31,14 @@ preprocessing:
   CenterXOnly: {}
 
 training:
-  epochs: 15
-  lr: 0.1
+  epochs: 10
+  lr: 0.05
   batch_size: 64
   aug_num: 1
   # only rotation
   aug_type: 
-    - rotation
-    - reflection
+    #- rotation
+    #- reflection
 
 predictor:
   # 100 and numer of layers arbitrary (depending on ViT implementation)

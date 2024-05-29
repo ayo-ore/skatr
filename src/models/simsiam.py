@@ -43,6 +43,10 @@ class SimSiam(Model):
                     x2 = x2.transpose(2, 3)
                 return x1, x2
             
+            # no augmentations
+            if self.aug_type == None:
+                return x, x
+                
             # apply augmentations
             x1, x2 = x, x
             if 'rotation' in self.aug_type:

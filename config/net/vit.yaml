@@ -1,29 +1,16 @@
 arch: ViT
 in_shape: [1, 140, 140, 2350]
 out_channels: 6
-patch_shape: [14, 14, 25]
-condition_dim: 46
-<<<<<<< HEAD
+patch_shape: [14, 14, 50]
 hidden_dim: 240
 depth: 2
-=======
 mask_frac: 0.
-hidden_dim: 256
-depth: 4
->>>>>>> main
 num_heads: 4
 mlp_ratio: 2.0
 attn_drop: 0.
 proj_drop: 0.
-<<<<<<< HEAD
 mlp_drop: 0.25
 learn_pos_encoding: True
-long_skips: False
 out_act: sigmoid
 out_mlp: True
-=======
-mlp_drop: 0.
-learn_pos_encoding: True
-out_act: sigmoid
 checkpoint_grads: False
->>>>>>> main
