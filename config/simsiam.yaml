@@ -3,13 +3,14 @@ run_name: simsiam:m${net.mask_frac}:z${latent_dim}:p${predictor_dim} #_H$:drop_t
 experiment: SimSiamExperiment
 # 6 arbitrary (depending on ViT implementation)
 # TODO pass to ViT
-latent_dim: 15
-predictor_dim: 30
+latent_dim: 25
+predictor_dim: 100
 evaluate: False
 plot: False
 
 net:
   out_channels: ${latent_dim}
+  out_act: null
   mask_frac: 0.15
 
 data:
@@ -22,7 +23,7 @@ data:
   #dir: /scratch/ore/data/x2
   # in pbs.yaml node: gpu02
   # increasingly worse with growing epochs
-  file_by_file: False
+  file_by_file: True
 
 preprocessing:
   #AddSingletonChannel: {}
@@ -31,14 +32,15 @@ preprocessing:
   CenterXOnly: {}
 
 training:
-  epochs: 10
+  epochs: 25
   lr: 0.05
   batch_size: 64
   aug_num: 1
   # only rotation
   aug_type: 
-    #- rotation
-    #- reflection
+    #- False
+    - rotation
+    - reflection
 
 predictor:
   # 100 and numer of layers arbitrary (depending on ViT implementation)
@@ -50,7 +52,7 @@ predictor:
     - ${latent_dim}
   act: relu
   out_act: null
-  drop: True
+  drop: 0.2
   
 defaults:
   - default

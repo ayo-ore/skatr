@@ -44,7 +44,7 @@ class SimSiam(Model):
                 return x1, x2
             
             # no augmentations
-            if self.aug_type == None:
+            if False in self.aug_type:
                 return x, x
                 
             # apply augmentations
