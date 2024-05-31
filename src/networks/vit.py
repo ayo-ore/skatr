@@ -23,6 +23,14 @@ class ViT(nn.Module):
 
         # check consistency of arguments
         check_shapes(cfg)
+        # convolutional layer
+        if cfg.in_conv == True:
+            self.convolution = nn.Conv3d(
+                cfg.conv.in_channels, 
+                cfg.conv.hidden_channels, 
+                kernel_size=(cfg.conv.xstride,cfg.conv.xstride,cfg.conv.zstride), 
+                stride=(1,1,cfg.conv.zstride),
+                padding=(0, 0, cfg.conv.zpadding))
         
         # embedding layer
         patch_dim = math.prod(cfg.patch_shape) * in_channels
@@ -84,6 +92,9 @@ class ViT(nn.Module):
         x   : tensor of spatial inputs with shape (B, C, *axis_sizes)
         mask: whether or not mask patches (for self supervision).
         """
+        # apply convolutional layer
+        if self.cfg.in_conv:
+            x = self.convolution(x)
 
         # patchify input and embed
         x = self.to_patches(x) # (B, T, D), with T = prod(num_patches)
