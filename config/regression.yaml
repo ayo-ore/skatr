@@ -1,8 +1,8 @@
-run_name: regression_${net.arch}
+run_name: regression_${net.arch}:conv
 experiment: RegressionExperiment
 data:
-  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations
-  #dir: /scratch2/heneka/21cmlightcones/pure_simulations
+  #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations
+  dir: /scratch2/heneka/21cmlightcones/pure_simulations
   file_by_file: True
 
 preprocessing:
@@ -10,7 +10,7 @@ preprocessing:
   Center: {}
 
 training:
-  epochs: 200
+  epochs: 120
   lr: 1.e-4
   batch_size: 32
   
