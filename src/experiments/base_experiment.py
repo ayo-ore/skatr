@@ -32,10 +32,9 @@ class BaseExperiment:
         log.info('Initializing model')
         model = self.get_model().to(device=self.device)
         # TODO: Implement option for memory format in trainer
-
         log.info(
             f'Model ({model.__class__.__name__}[{model.net.__class__.__name__}]) has '
-            f'{sum(w.numel() for w in model.parameters())} parameters'
+            f'{sum(w.numel() for w in model.trainable_parameters)} trainable parameters'
         )
 
         if self.cfg.train:
@@ -46,7 +45,8 @@ class BaseExperiment:
             log.info('Running training')
             trainer.run_training()
         else:
-            model.load()
+            log.info(f'Loading model state from {self.cfg.prev_exp_dir}.')
+            model.load(self.exp_dir, self.device)
             model.eval()
 
         if self.cfg.evaluate:

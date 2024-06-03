@@ -39,26 +39,25 @@ class Trainer:
         self.device = device
         self.exp_dir = exp_dir
         self.preprocessing = preprocessing
-        
         self.epoch = 0
 
     def prepare_training(self):
         
         log.info('Preparing model training')
 
-        # TODO: Allow for selecting optimizer in config
-        self.optimizer = torch.optim.AdamW(
-            self.model.net.parameters(), lr=self.cfg.lr, betas=self.cfg.adam.betas,
-            weight_decay=self.cfg.adam.weight_decay,
+        # init optimizer
+        opt_cls = getattr(torch.optim, self.cfg.optimizer.name)
+        self.optimizer = opt_cls(
+            self.model.trainable_parameters, lr=self.cfg.lr, **self.cfg.optimizer.kwargs
         )
 
+        # init scheduler
         self.steps_per_epoch = len(self.dataloaders['train'])
-        if self.cfg.use_scheduler:
-            raise NotImplementedError
-            self.scheduler = set_scheduler(
-                self.optimizer, self.cfg, steps_per_epoch=self.steps_per_epoch
-            )
+        if self.cfg.scheduler:
+            sdl_cls = getattr(torch.optim.lr_scheduler, self.cfg.scheduler.name)
+            self.scheduler = sdl_cls(self.optimizer, **self.cfg.scheduler.kwargs)
 
+        # set logging of metrics
         if self.cfg.use_tensorboard:
             self.summarizer = SummaryWriter(self.exp_dir)
             log.info(f'Writing tensorboard summaries to dir {self.exp_dir}')
@@ -146,16 +145,11 @@ class Trainer:
                 log.info(f"Unstable loss contains infinity. Skipping backprop for epoch {self.epoch}")
                 continue
 
-            # propagate gradients
-            loss.backward()
-            # optionally clip gradients
-            if clip := self.cfg.gradient_norm:
-                nn.utils.clip_grad_norm_(self.model.net.parameters(), clip)
-            # update weights
-            self.optimizer.step()
+            # update model parameters
+            self.model.update(self.optimizer, loss)
             
             # update learning rate
-            if self.cfg.use_scheduler:
+            if self.cfg.scheduler:
                 self.scheduler.step()
             
             # track loss
@@ -171,7 +165,7 @@ class Trainer:
         # optionally log to tensorboard
         if self.cfg.use_tensorboard:
             self.summarizer.add_scalar("epoch_loss_train", self.epoch_train_losses[-1], self.epoch)
-            if self.cfg.use_scheduler:
+            if self.cfg.scheduler:
                 self.summarizer.add_scalar(
                     "learning_rate", self.scheduler.get_last_lr()[0],self.epoch
                 )
@@ -204,11 +198,11 @@ class Trainer:
         """Save the model along with the training state"""
         state_dicts = {
             'opt': self.optimizer.state_dict(),
-            'net': self.model.net.state_dict(),
+            'model': self.model.state_dict(),
             'losses': self.epoch_train_losses,
             'epoch': self.epoch
         }
-        if self.cfg.use_scheduler:
+        if self.cfg.scheduler:
             state_dicts['scheduler'] = self.scheduler.state_dict()
         torch.save(state_dicts, os.path.join(self.exp_dir, f'model{epoch}.pt'))
 
@@ -216,7 +210,7 @@ class Trainer:
         """Load the model and training state"""
         name = os.path.join(self.exp_dir, f'model{epoch}.pt')
         state_dicts = torch.load(name, map_location=self.device)
-        self.model.net.load_state_dict(state_dicts['net'])
+        self.model.load_state_dict(state_dicts['net'])
         
         if 'losses' in state_dicts:
             self.epoch_train_losses = state_dicts.get('losses', {})

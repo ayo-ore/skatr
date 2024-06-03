@@ -23,20 +23,20 @@ training:
   lr: 1.e-3
   # number of light cones in parallel
   batch_size: 32
-  use_scheduler: False
+  optimizer:
+    name: AdamW
+    kwargs: {weight_decay: 1.e-3}
+  scheduler: {}
   gradient_norm: null
-  adam:
-    betas: [0.99, 0.999]
-    weight_decay: 1.e-3
   validate_freq: 1
   save_freq: null
   start_epoch: null
   use_tensorboard: True
-  
+
+backbone: null
+
 defaults:
   - cluster: pbs
-  # - preprocessing
-  # - schedule ?
   - hydra
   - _self_
 
