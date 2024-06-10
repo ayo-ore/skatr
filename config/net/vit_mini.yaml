@@ -13,7 +13,6 @@ attn_drop: 0.
 proj_drop: 0.
 mlp_drop: 0.25
 learn_pos_encoding: True
-long_skips: False
 out_act: sigmoid
 out_mlp: True
 checkpoint_grads: False
