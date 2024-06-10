@@ -20,8 +20,8 @@ class Pretrainer(Model):
 
     def batch_loss(self, batch):        
 
-        # augment / mask batch
-        x1 = augment(batch[0], include_identity=True)
+        # augment
+        x1 = augment(batch[0], include_identity=True) if self.cfg.augment else x1
         x2 = augment(x1) if self.cfg.augment else x1
 
         # embed masked batch
