@@ -24,13 +24,20 @@ class ViT(nn.Module):
         # check consistency of arguments
         check_shapes(cfg)
         # convolutional layer
-        if cfg.in_conv == True:
+        if cfg.in_conv:
+            xkernel = cfg.conv.xkernel
+            zkernel = cfg.conv.zkernel
+            xstride = cfg.conv.xstride
+            zstride = cfg.conv.zstride
+            xpad = cfg.conv.xpadding
+            zpad = cfg.conv.zpadding
+
             self.convolution = nn.Conv3d(
                 cfg.conv.in_channels, 
                 cfg.conv.hidden_channels, 
-                kernel_size=(cfg.conv.xstride,cfg.conv.xstride,cfg.conv.zstride), 
-                stride=(1,1,cfg.conv.zstride),
-                padding=(0, 0, cfg.conv.zpadding))
+                kernel_size=(xkernel, xkernel, zkernel), 
+                stride=(xstride, xstride, zstride),
+                padding=(xpad, xpad, zpad))
         
         # embedding layer
         patch_dim = math.prod(cfg.patch_shape) * in_channels

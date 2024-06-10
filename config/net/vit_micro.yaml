@@ -2,12 +2,6 @@ arch: ViT
 in_shape: [1, 28, 28, 470]
 out_channels: 6
 in_conv: False
-conv:
-  in_channels: 1
-  hidden_channels: 16
-  xstride: 3
-  zstride: 55
-  zpadding: 1
 patch_shape: [4, 4, 5]
 hidden_dim: 240
 depth: 2
