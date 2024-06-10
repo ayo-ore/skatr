@@ -1,7 +1,7 @@
 run_name: fine_regression_micro_${net.arch}
 experiment: RegressionExperiment
 
-backbone: runs/siam_micro_sym:True_mask:True_norm:True/2024-05-29_17-56-36
+backbone: runs/pretraining_micro:latent200:pred128/2024-06-03_16-22-39
 net:
   units: [128, 256, 256, 6] # input dim must match backbone embedding dim
   out_act: sigmoid
@@ -13,6 +13,14 @@ data:
 preprocessing:
   AddSingletonChannel: {}
   Center: {}
+
+training:
+  epochs: 150
+  lr: 1.e-3
+  batch_size: 64
+  optimizer:
+    name: AdamW
+    kwargs: {weight_decay: 1.e-3}
   
 defaults:
   - default

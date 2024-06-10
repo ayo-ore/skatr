@@ -1,16 +1,18 @@
-#run_name: regression_mini_${net.arch}_P${net.patchx}x${net.patchz}:H${net.hidden_dim}:D${net.depth}:Hs${net.num_heads}
-run_name: regression_micro_${net.arch}_H${net.hidden_dim}:D${net.depth}:Hs${net.num_heads} #:drop${net.proj_drop}:out_mlp #:big_zpatch
+#run_name: regression_micro_H${net.hidden_dim}:D${net.depth}:Hs${net.num_heads} #:drop${net.proj_drop}:out_mlp #:big_zpatch
+run_name: regression_micro:H${net.hidden_dim}
 experiment: RegressionExperiment
 data:
   # not stored in gpu:
   # also use cluster.node=1 (no preferred gpu)
   #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
   #stored gpu01:
-  dir: /scratch2/heneka/21cmlightcones/pure_simulations/x5
+  #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x5
   # stored gpu02:
-  #dir: /scratch/ore/data/x5
+  dir: /scratch/ore/data/x5
   # in pbs.yaml node: gpu02
   # increasingly worse with growing epochs
+  # optional data
+  #dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x5
   file_by_file: False
 
 

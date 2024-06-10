@@ -8,4 +8,4 @@ time: '40:0:0'
 num_gpus: 1
 # 1 for h100
 # gpu01/gpu02 for a30
-node: 1
+node: gpu02

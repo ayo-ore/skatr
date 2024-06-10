@@ -36,9 +36,8 @@ training:
   lr: 0.05
   batch_size: 64
   aug_num: 1
-  # only rotation
+  augment: True
   aug_type: 
-    #- False
     - rotation
     - reflection
 
