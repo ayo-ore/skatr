@@ -55,5 +55,6 @@ predictor:
   
 defaults:
   - default
+  - preprocessing: xonly
   - net: vit_micro
   - _self_

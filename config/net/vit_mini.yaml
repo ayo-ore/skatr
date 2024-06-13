@@ -1,5 +1,5 @@
 arch: ViT
-in_shape: [1, 24, 24, 395]
+in_shape: [1, 70, 70, 1175]
 out_channels: 6
 in_conv: False
 patch_shape: [7, 7, 25] # 10 x 10 x 45 = 4500 tokens with 7x7x25 = 1225 voxels

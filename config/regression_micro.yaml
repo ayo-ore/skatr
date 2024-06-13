@@ -4,16 +4,16 @@ experiment: RegressionExperiment
 data:
   # not stored in gpu:
   # also use cluster.node=1 (no preferred gpu)
-  #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
-  #stored gpu01:
+  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
+  # stored gpu01:
   #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x5
   # stored gpu02:
-  dir: /scratch/ore/data/x5
+  #dir: /scratch/ore/data/x5
   # in pbs.yaml node: gpu02
   # increasingly worse with growing epochs
   # optional data
   #dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x5
-  file_by_file: False
+  file_by_file: True
 
 
 preprocessing:
@@ -27,5 +27,6 @@ training:
   
 defaults:
   - default
+  - preprocessing: xandy
   - net: vit_micro
   - _self_

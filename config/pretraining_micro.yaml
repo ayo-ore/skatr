@@ -1,4 +1,5 @@
-run_name: pretraining_micro
+run_name: pretraining_micro:300
+#run_name: debug
 experiment: PretrainingExperiment
 evaluate: False
 plot: False
@@ -6,7 +7,7 @@ plot: False
 latent_dim: 128
 predictor_dim: 128
 ema_momentum: 0.9995
-sim: l2
+sim: l1
 augment: True
 mask: True
 norm_target: True
@@ -19,10 +20,12 @@ net:
 data:
   # not stored in gpu:
   dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
+  # stored gpu02:
+  #dir: /scratch/ore/data/x5
   file_by_file: False
 
 training:
-  epochs: 50
+  epochs: 300
   lr: 0.001
   batch_size: 64
   optimizer:

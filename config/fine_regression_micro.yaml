@@ -1,7 +1,7 @@
 run_name: fine_regression_micro_${net.arch}
 experiment: RegressionExperiment
 
-backbone: runs/pretraining_micro/2024-06-06_22-41-11 # best: ema + adam + norm + l2
+backbone: runs/pretraining_micro/2024-06-11_13-23-37
 latent_dim: 128
 
 net:
@@ -10,6 +10,7 @@ net:
   - 256
   - 256
   - 6
+  drop: 0.25
   out_act: sigmoid
 
 data:

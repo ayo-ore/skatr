@@ -13,9 +13,10 @@ class Pretrainer(Model):
         self.predictor = networks.MLP(cfg.predictor)
         self.student = self.net
         self.teacher = self.net.__class__(cfg.net)
-
-        self.sim = nn.CosineSimilarity(dim=1, eps=1e-6)
-        # self.sim = lambda x1, x2: -nn.functional.mse_loss(x1, x2)
+        match cfg.sim:
+            case 'l1': self.sim = nn.L1Loss(reduction='mean')
+            case 'l2': self.sim = nn.MSELoss(reduction='mean')
+            case 'cosine': self.sim = -nn.CosineSimilarity(dim=1, eps=1e-6)
         self.norm = nn.BatchNorm1d(cfg.latent_dim)
 
     def batch_loss(self, batch):        
@@ -37,7 +38,7 @@ class Pretrainer(Model):
         pred = self.predictor(embedding)
 
         # similarity loss
-        loss = -self.sim(pred, target)
+        loss = self.sim(pred, target)
         
         return loss.mean()
     
