@@ -16,6 +16,7 @@ net:
   out_channels: ${latent_dim}
   out_act: null
   mask_frac: 0.4
+  mask_block: True
 
 data:
   # not stored in gpu:

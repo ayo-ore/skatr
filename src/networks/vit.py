@@ -107,7 +107,11 @@ class ViT(nn.Module):
         x = self.to_patches(x) # (B, T, D), with T = prod(num_patches)
         x = self.embedding(x)
         if mask:
-            self.random_mask_patches(x)
+            block = self.cfg.net.mask_block
+            if mask_block:
+                self.random_mask_block_patches(x)
+            if not mask_block:
+                self.random_mask_patches(x)
         x = x + self.pos_encoding() # TODO: Check whether masked tokens should really get a position embedding
 
         # process patches with transformer blocks
@@ -146,6 +150,57 @@ class ViT(nn.Module):
         mask_map = torch.zeros((B, T), device=x.device).scatter_(-1, mask_idcs, 1).bool()
 
         return torch.where(mask_map[..., None], full_mask, x)
+
+    def random_mask_block_patches(self, x):
+        """
+        Masks x by randomly selecting a block of patches in each batch (currently 
+        same for all batches) and replacing their embedding with `self.mask_token`. 
+        The number of patches to mask is determined by the `self.cfg.mask_frac` option.
+        """
+        if not self.cfg.mask_frac:
+            print("WARNING: Option `mask_frac` is zero. No masking will be applied.")
+            return x
+
+        B, T = x.size(0), x.size(1) # batch size, total of number patches
+        full_mask = repeat(self.mask_token, 'd -> b t d', b=B, t=T)
+        mask_idcs = repeat(self.sample_block_indcs(), 'm -> b m', b=B) # same mask for whole batch TODO: reasonable?
+        mask_idcs = mask_idcs.to(x.device)
+        mask_map = torch.zeros((B, T), device=x.device).scatter_(-1, mask_idcs, 1).bool()
+        return torch.where(mask_map[..., None], full_mask, x)
+
+    def sample_block_indcs(self):
+        def sample_block_size(self):
+            h, _, d = self.num_patches
+            h *= self.cfg.mask_frac ** (1. / 3)
+            d *= self.cfg.mask_frac ** (1. / 3)
+            return (int(h + .5), int(h + .5), int(d + .5))
+
+        _, *axis_sizes = self.cfg.in_shape
+        patch_shape = self.cfg.patch_shape
+        height, width, depth = self.num_patches
+        h, w, d = sample_block_size(self)
+        # Loop to sample masks until we find a valid one
+        tries = 0
+        timeout = 20
+        valid_mask = False
+        while not valid_mask:
+            # Sample block top-left corner
+            top = torch.randint(0, height - h, (1,))
+            left = torch.randint(0, width - w, (1,))
+            back = torch.randint(0, depth - d, (1,))
+            mask = torch.zeros((height, width, depth), dtype=torch.int32)
+            mask[top:top+h, left:left+w, back:back+d] = 1
+            mask = torch.nonzero(mask.flatten())
+            # If mask too small try again
+            min_keep = 4 # minimum number of patches to keep
+            valid_mask = len(mask) > min_keep
+            if not valid_mask:
+                timeout -= 1
+                if timeout == 0:
+                    tries += 1
+                    timeout = og_timeout
+        mask = mask.squeeze()
+        return mask
 
 class Block(nn.Module):
     def __init__(
