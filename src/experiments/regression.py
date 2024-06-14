@@ -4,10 +4,11 @@ import os
 import torch
 from glob import glob
 from matplotlib.backends.backend_pdf import PdfPages
-from torch.utils.data import Dataset, TensorDataset
+from torch.utils.data import Dataset
 
-from .base_experiment import BaseExperiment
-from ..models import Regressor
+from src.experiments.base_experiment import BaseExperiment
+from src.models import Regressor
+from src.utils import PARAM_NAMES
 
 class RegressionExperiment(BaseExperiment):
     
@@ -28,6 +29,7 @@ class RegressionExperiment(BaseExperiment):
         savepath = os.path.join(self.exp_dir, savename)
         if os.path.exists(savepath):
             old_dir = os.path.join(self.exp_dir, 'old_plots')
+            self.log.info(f'Moving old plots to {old_dir}')
             os.makedirs(old_dir, exist_ok=True)
             os.rename(savepath, os.path.join(old_dir, savename))
 
@@ -48,15 +50,21 @@ class RegressionExperiment(BaseExperiment):
                 ax.scatter(labels, preds, alpha=0.4, color='darkblue')
                 ax.text(0.1, 0.9, f"{NRMSE=:.3f}", transform=ax.transAxes)
 
-                ax.set_xlabel(f'Param {i}')
+                ax.set_xlabel(PARAM_NAMES[i])
                 ax.set_ylabel(f'Prediction')
                 fig.tight_layout()
 
                 pdf.savefig(fig)
+
+        self.log.info(f'Saved plots to {savepath}')
     
     @torch.inference_mode()
     def evaluate(self, dataloaders, model):
-
+        """
+        Evaluates the regressor on lightcones in the test dataset.
+        Predictions are saved alongside truth labels
+        """
+        
         # disable batchnorm updates, dropout etc.
         model.eval()
 
@@ -86,9 +94,9 @@ class RegressionExperiment(BaseExperiment):
         preds = np.vstack(preds)
         
         # save results
-        np.save(
-            os.path.join(self.exp_dir, 'label_pred_pairs'), np.stack([labels, preds], axis=-1)
-        )
+        savepath = os.path.join(self.exp_dir, 'label_pred_pairs.npy')
+        self.log.info(f'Saving label/prediction pairs to {savepath}')
+        np.save(savepath, np.stack([labels, preds], axis=-1))
 
 
 class RegressionDatasetByFile(Dataset):

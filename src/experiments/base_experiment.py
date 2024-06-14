@@ -3,10 +3,8 @@ import torch
 from abc import abstractmethod
 from torch.utils.data import DataLoader, random_split
 
-from .. import transforms
-from ..trainers.trainer import Trainer
-
-log = logging.getLogger('Experiment')
+from src import transforms
+from src.trainers.trainer import Trainer
 
 class BaseExperiment:
 
@@ -21,41 +19,43 @@ class BaseExperiment:
             for k, d in self.cfg.preprocessing.items()
         }
 
+        self.log = logging.getLogger('Experiment')
+
     def run(self):
 
-        log.info('Reading data')
+        self.log.info('Reading data')
         dataset = self.get_dataset() # TODO: Print the dataset signature/shape
 
-        log.info('Initializing dataloaders')
+        self.log.info('Initializing dataloaders')
         dataloaders = self.get_dataloaders(dataset)
 
-        log.info(f'Using device {self.device}')
-        log.info('Initializing model')
+        self.log.info(f'Using device {self.device}')
+        self.log.info('Initializing model')
         model = self.get_model().to(device=self.device)
         # TODO: Implement option for memory format in trainer
-        log.info(
+        self.log.info(
             f'Model ({model.__class__.__name__}[{model.net.__class__.__name__}]) has '
             f'{sum(w.numel() for w in model.trainable_parameters)} trainable parameters'
         )
 
         if self.cfg.train:
-            log.info('Initializing trainer')
+            self.log.info('Initializing trainer')
             trainer = Trainer(
                 model, dataloaders, self.preprocessing, self.cfg.training, self.exp_dir, self.device
             )
-            log.info('Running training')
+            self.log.info('Running training')
             trainer.run_training()
         else:
-            log.info(f'Loading model state from {self.cfg.prev_exp_dir}.')
+            self.log.info(f'Loading model state from {self.cfg.prev_exp_dir}.')
             model.load(self.exp_dir, self.device)
             model.eval()
 
         if self.cfg.evaluate:
-            log.info('Running evaluation')
+            self.log.info('Running evaluation')
             self.evaluate(dataloaders, model)
 
         if self.cfg.plot:
-            log.info('Making plots')
+            self.log.info('Making plots')
             self.plot()
     
     def get_dataloaders(self, dataset):
@@ -76,8 +76,11 @@ class BaseExperiment:
         # create dataloaders
         dataloaders = {
             k: DataLoader(
-                d, batch_size=self.cfg.training.batch_size, shuffle=True, drop_last=True,
-                num_workers=self.cfg.num_cpus, pin_memory=False # pinning can cause memory issues
+                d, shuffle=True, drop_last=True, num_workers=self.cfg.num_cpus, pin_memory=False, # pinning can cause memory issues
+                batch_size=(
+                    self.cfg.training.batch_size if k=='train'
+                    else self.cfg.training.test_batch_size
+                )
             ) for k, d in dataset_splits.items()
         }
 

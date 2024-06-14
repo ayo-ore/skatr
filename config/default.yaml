@@ -23,6 +23,7 @@ training:
   lr: 1.e-3
   # number of light cones in parallel
   batch_size: 32
+  test_batch_size: 200
   optimizer:
     name: AdamW
     kwargs: {weight_decay: 1.e-3}

@@ -1,10 +1,10 @@
-import torch # for rot90 augmentations
+import torch
 import torch.nn as nn
 import random
 from omegaconf import DictConfig
 
-from .base_model import Model
-from .. import networks
+from src import networks
+from src.models.base_model import Model
 
 class Pretrainer(Model):
 
@@ -13,9 +13,17 @@ class Pretrainer(Model):
         self.predictor = networks.MLP(cfg.predictor)
         self.student = self.net
         self.teacher = self.net.__class__(cfg.net)
+
+        ''' 
         match cfg.sim:
             case 'l1': self.sim = nn.L1Loss(reduction='mean')
             case 'l2': self.sim = nn.MSELoss(reduction='mean')
+            case 'cosine': self.sim = -nn.CosineSimilarity(dim=1, eps=1e-6)
+        Ayo uses different functions:
+        '''
+        match cfg.sim:
+            case 'l1': self.sim = lambda x1, x2: (x1-x2).abs().mean(1)
+            case 'l2': self.sim = lambda x1, x2: nn.functional.mse_loss(x1, x2)
             case 'cosine': self.sim = -nn.CosineSimilarity(dim=1, eps=1e-6)
         self.norm = nn.BatchNorm1d(cfg.latent_dim)
 
@@ -56,7 +64,7 @@ class Pretrainer(Model):
         return self.student(x, mask=mask)
 
     @torch.inference_mode()
-    def predict(self, x):
+    def embed(self, x):
         return self.student(x)
 
 def augment(x, include_identity=False):
