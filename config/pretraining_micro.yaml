@@ -1,4 +1,4 @@
-run_name: pretraining_micro:block
+run_name: pretraining_micro:random_size
 #run_name: debug
 experiment: PretrainingExperiment
 evaluate: False
@@ -17,6 +17,8 @@ net:
   out_act: null
   mask_frac: 0.4
   mask_block: True
+  mask_frac_scale: [0.2, 0.8]
+  mask_aspect_scale: [0.3, 3.0]
 
 data:
   # not stored in gpu:
