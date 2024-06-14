@@ -1,7 +1,7 @@
 run_name: fine_regression_micro_${net.arch}
 experiment: RegressionExperiment
 
-backbone: runs/pretraining_micro/2024-06-11_13-23-37
+backbone: runs/pretraining_micro:block/2024-06-13_16-44-42 # block masked
 latent_dim: 128
 
 net:
@@ -14,11 +14,14 @@ net:
   out_act: sigmoid
 
 data:
-  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
-  file_by_file: True
+  # not stored in gpu:
+  #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
+  # stored gpu02:
+  dir: /scratch/ore/data/x5
+  file_by_file: False
 
 training:
-  epochs: 120
+  epochs: 200
   lr: 1.e-3
   batch_size: 64
   optimizer:

@@ -1,4 +1,4 @@
-run_name: pretraining_micro:300
+run_name: pretraining_micro:block
 #run_name: debug
 experiment: PretrainingExperiment
 evaluate: False
