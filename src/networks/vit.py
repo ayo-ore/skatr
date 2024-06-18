@@ -164,17 +164,12 @@ class ViT(nn.Module):
 
         B, T = x.size(0), x.size(1) # batch size, total of number patches
         full_mask = repeat(self.mask_token, 'd -> b t d', b=B, t=T)
-        mask_idcs = repeat(self.sample_block_indcs(), 'm -> b m', b=B) # same mask for whole batch TODO: reasonable?
-        mask_idcs = mask_idcs.to(x.device)
-        mask_map = torch.zeros((B, T), device=x.device).scatter_(-1, mask_idcs, 1).bool()
-        print(f'{mask_idcs[0]=}')
-        print(f'{mask_idcs[1]=}')
-        print('Success!')
+        mask_map = torch.stack([self.sample_block_mask() for _ in range(B)]).to(x.device)
         return torch.where(mask_map[..., None], full_mask, x)
             
-    def sample_block_indcs(self):
+    def sample_block_mask(self):
         """
-        Helper that samples block mask indices
+        Helper that samples boolean block mask
         TODO: ensure that blocks shapes are sampled 
         """
         height, width, depth = self.num_patches
@@ -186,22 +181,22 @@ class ViT(nn.Module):
         valid_mask = False
         while not valid_mask:
             # Sample block top-left corner
-            top = torch.randint(0, height - h, (1,))
-            left = torch.randint(0, width - w, (1,))
-            back = torch.randint(0, depth - d, (1,))
-            mask_idcs = torch.zeros((height, width, depth), dtype=torch.int32)
-            mask_idcs[top:top+h, left:left+w, back:back+d] = 1
-            mask_idcs = torch.nonzero(mask_idcs.flatten())
+            top = torch.randint(0, height - h + 1, (1,))
+            left = torch.randint(0, width - w + 1, (1,))
+            back = torch.randint(0, depth - d + 1, (1,))
+            mask = torch.zeros((height, width, depth), dtype=torch.int32)
+            mask[top:top+h, left:left+w, back:back+d] = 1
+            mask = mask.flatten()
             # If mask too small try again
             min_keep = 4 # minimum number of patches to keep
-            valid_mask = len(mask_idcs) > min_keep
+            valid_mask = len(mask) > min_keep
             if not valid_mask:
                 timeout -= 1
                 if timeout == 0:
                     tries += 1
                     timeout = og_timeout
-        mask_idcs = mask_idcs.squeeze()
-        return mask_idcs
+        mask = mask.squeeze().bool()
+        return mask
     
     def sample_block_size(self):
         """
@@ -209,37 +204,48 @@ class ViT(nn.Module):
         cfg.mask_frac_scale: interval that a block fraction is sampled from
         cfg.mask_aspect_scale: interval that x and y ratio is sampled from
         """
-        height, width, depth = self.num_patches
+        max_dims = self.num_patches
+        mask_frac_scale = self.cfg.mask_frac_scale
+        mask_aspect_scale = self.cfg.mask_aspect_scale
 
-        if not self.cfg.mask_frac_scale or not self.cfg.mask_aspect_scale:
-            print("WARNING: Option `mask_frac_scale` or `mask_aspect_scale` is zero. Falling back to cube masking.")
+        if not mask_frac_scale or not mask_aspect_scale:
+            print("WARNING: Option `mask_frac_scale` or `mask_aspect_scale` is zero. Falling back to even cube masking.")
             h, _, d = self.num_patches
             h *= self.cfg.mask_frac ** (1. / 3)
             d *= self.cfg.mask_frac ** (1. / 3)
             return (int(h + .5), int(h + .5), int(d + .5))
 
-        # Sample block scale
-        min_s, max_s = self.cfg.mask_frac_scale
-        mask_scale = (min_s - max_s) * torch.rand(1,) + max_s
-        max_keep = int(height * width * mask_scale)
-        T = math.prod(self.num_patches)
-        num_masked = int(mask_scale * T)
+        # Sample cube volume ie. mask fraction
+        min_s, max_s = mask_frac_scale
+        v = (min_s - max_s) * torch.rand(1,) + max_s
 
-        # Sample block aspect-ratio
-        min_ar, max_ar = self.cfg.mask_aspect_scale
-        aspect_ratio = (min_ar - max_ar) * torch.rand(1,) + max_ar
+        # Sample two aspect-ratios, between z & x and z & y respectively
+        def sample_aspect_ratio():
+            # Sample a single aspect-ratio, ensuring that both dimensions are equally likely to be scaled up or down
+            min_ar, max_ar = mask_aspect_scale
+            if torch.randint(0, 2, (1,)) == 0:
+                max_ar = 1.
+            else:
+                min_ar = 1.
+            aspect_ratio = (min_ar - max_ar) * torch.rand(1,) + max_ar
+            return aspect_ratio
 
-        # Compute block height and width (given scale and aspect-ratio of x and y)
-        h = int(round(math.sqrt(max_keep * aspect_ratio)))
-        w = int(round(math.sqrt(max_keep / aspect_ratio)))
-        d = int(mask_scale * num_masked / (h * w) + .5)
-        while h >= height:
-            h -= 1
-        while w >= width:
-            w -= 1
-        while d >= depth:
-            d -= 1
-        return (h, w, d)
+        while True:
+            # Sample ratios such that all dimensions are restricted to within a unit cube
+            ratio_h = sample_aspect_ratio()
+            ratio_w = sample_aspect_ratio()
+            d = math.cbrt(v / (ratio_h * ratio_w))
+            h = ratio_h * d
+            w = ratio_w * d
+            dims = [h, w, d]
+            dim_outside = [dim > 1. for dim in dims]
+            if not any(dim_outside): break
+
+        # Scale unit cube dimensions to number of patches
+        for j in range(len(dims)):
+            dims[j] = int(dims[j] * max_dims[j] + .5)
+        
+        return dims
 
 class Block(nn.Module):
     def __init__(
