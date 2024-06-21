@@ -2,7 +2,7 @@ arch: ViT
 in_shape: [1, 28, 28, 470]
 out_channels: 6
 in_conv: False
-patch_shape: [4, 4, 5]
+patch_shape: [4, 4, 10]
 hidden_dim: 240 # must be divisible by 4 and 6
 depth: 2
 mask_frac: 0.

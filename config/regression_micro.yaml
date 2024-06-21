@@ -1,5 +1,5 @@
 #run_name: regression_micro_H${net.hidden_dim}:D${net.depth}:Hs${net.num_heads} #:drop${net.proj_drop}:out_mlp #:big_zpatch
-run_name: regression_micro:H${net.hidden_dim}
+run_name: regression_micro:H${net.hidden_dim}:zpatch=10
 experiment: RegressionExperiment
 data:
   # not stored in gpu:
