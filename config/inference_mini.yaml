@@ -1,4 +1,4 @@
-run_name: inference_micro
+run_name: inference_mini
 experiment: InferenceExperiment
 
 dim: 6
@@ -24,15 +24,18 @@ summary_net:
 
 data:
   # not stored in gpu:
-  #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
+  # also use cluster.node=1 (no preferred gpu)
+  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x2
+  # stored gpu01:
+  #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x2
   # stored gpu02:
-  dir: /scratch/ore/data/x5
+  #dir: /scratch/ore/data/x2
   file_by_file: False
 
 training:
   epochs: 100
   lr: 0.001
-  batch_size: 64
+  batch_size: 32
   test_batch_size: ${num_test_points}
   optimizer:
     name: AdamW
@@ -42,5 +45,5 @@ defaults:
   - default
   - preprocessing: xandy
   - net: mlp
-  - net@summary_net: vit_micro
+  - net@summary_net: vit_mini
   - _self_

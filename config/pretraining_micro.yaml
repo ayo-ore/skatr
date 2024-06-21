@@ -15,14 +15,16 @@ norm_target: True
 net:
   out_channels: ${latent_dim}
   out_act: null
-  mask_frac: 0.4
+  mask_frac: False
   mask_block: True
   mask_frac_scale: [0.3, 0.5]
   mask_aspect_scale: [0.75, 1.5]
 
 data:
   # not stored in gpu:
-  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
+  #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
+  # stored gpu01:
+  dir: /scratch2/heneka/21cmlightcones/pure_simulations/x5
   # stored gpu02:
   #dir: /scratch/ore/data/x5
   file_by_file: False

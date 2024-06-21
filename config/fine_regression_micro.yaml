@@ -1,7 +1,7 @@
-run_name: fine_regression_micro_${net.arch}
+run_name: fine_regression_micro_${net.arch}:block_mask
 experiment: RegressionExperiment
 
-backbone: runs/pretraining_micro:block/2024-06-13_16-44-42 # block masked
+backbone: runs/pretraining_micro:block_mask/2024-06-18_16-09-59
 latent_dim: 128
 
 net:

@@ -139,7 +139,7 @@ class ViT(nn.Module):
         embedding with `self.mask_token`. The number of patches to mask is 
         determined by the `self.cfg.mask_frac` option.
         """
-        if not self.cfg.mask_frac:
+        if not self.cfg.mask_frac and not self.cfg.mask_frac_scale:
             print("WARNING: Option `mask_frac` is zero. No masking will be applied.")
             return x
 
@@ -208,7 +208,7 @@ class ViT(nn.Module):
         mask_frac_scale = self.cfg.mask_frac_scale
         mask_aspect_scale = self.cfg.mask_aspect_scale
 
-        if not mask_frac_scale or not mask_aspect_scale:
+        if not mask_aspect_scale:
             print("WARNING: Option `mask_frac_scale` or `mask_aspect_scale` is zero. Falling back to even cube masking.")
             h, _, d = self.num_patches
             h *= self.cfg.mask_frac ** (1. / 3)
