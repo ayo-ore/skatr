@@ -23,7 +23,7 @@ class Pretrainer(Model):
 
     def batch_loss(self, batch):        
 
-        # augment
+        # augment batch
         x1 = augment(batch[0], include_identity=True) if self.cfg.augment else batch[0]
         x2 = augment(x1) if self.cfg.augment else x1
 
@@ -69,13 +69,12 @@ class Pretrainer(Model):
         return self.student(x)
     
     def sample_mask(self, batch_size, device):
-        num_patches = self.student.num_patches
-        mask_frac = self.cfg.mask_frac # TODO: replace with fixed range?
-        match self.cfg.masking:
-            case 'random':
-                return masks.random_patch_mask(num_patches, mask_frac, batch_size, device)
-            case '_':
-                return None  
+
+        if cfg := self.cfg.masking:
+            num_patches = self.student.num_patches
+            match cfg.name:
+                case 'random':
+                    return masks.random_patch_mask(num_patches, cfg, batch_size, device)
 
 def augment(x, include_identity=False):
     """Applies random rotation + reflection, avoiding double counting"""
