@@ -1,22 +1,26 @@
 #run_name: regression_micro_H{net.hidden_dim}:D${net.depth}:Hs${net.num_heads} #:drop${net.proj_drop}:out_mlp #:big_zpatch
-run_name: regression_micro:opt_data
+#run_name: regression_mini_conv:new_data
+run_name: debug
 experiment: RegressionExperiment
 data:
   # not stored in gpu:
   # also use cluster.node=1 (no preferred gpu)
   #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x2
-  #stored gpu01:
+  # new data
+  dir: /remote/gpu00/nordmann/skatr/21cm-wrapper/data
+  # stored gpu01:
   #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x2
   # stored gpu02:
   #dir: /scratch/ore/data/x2
+  # optional data
+  #dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x2
   # in pbs.yaml node: gpu02
   # increasingly worse with growing epochs
-  # optional data
-  dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x2
-  file_by_file: False
+  file_by_file: True
 
 net:
   in_shape: [1, 24, 24, 395]
+  patch_shape: [4, 4, 5]
   in_conv: True
   conv:
     in_channels: 1

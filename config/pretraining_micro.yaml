@@ -1,4 +1,4 @@
-run_name: pretraining_micro:block_mask
+run_name: pretraining_micro:new_data
 #run_name: debug
 experiment: PretrainingExperiment
 evaluate: False
@@ -6,7 +6,7 @@ plot: False
 
 latent_dim: 128
 predictor_dim: 128
-ema_momentum: 0.9995
+ema_momentum: 0.9997
 momentum_schedule: False
 sim: l1
 augment: True
@@ -16,7 +16,6 @@ norm_target: True
 net:
   out_channels: ${latent_dim}
   out_act: null
-<<<<<<< HEAD
   mask_frac: False
   mask_block: True
   mask_frac_scale: [0.3, 0.5]
@@ -25,16 +24,12 @@ net:
 data:
   # not stored in gpu:
   #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
+  # new data
+  dir: /remote/gpu00/nordmann/skatr/21cm-wrapper/data/x5
   # stored gpu01:
-  dir: /scratch2/heneka/21cmlightcones/pure_simulations/x5
+  #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x5
   # stored gpu02:
   #dir: /scratch/ore/data/x5
-=======
-  mask_frac: 0.5
-
-data:
-  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
->>>>>>> main
   file_by_file: False
 
 training:

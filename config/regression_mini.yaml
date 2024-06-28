@@ -1,6 +1,7 @@
 #run_name: regression_mini_${net.arch}_P${net.patchx}x${net.patchz}:H${net.hidden_dim}:D${net.depth}:Hs${net.num_heads}
 #run_name: regression_mini_${net.arch}_H${net.hidden_dim}:D${net.depth}:Hs${net.num_heads}:conv #:drop${net.proj_drop}:out_mlp #:big_zpatch
-run_name: regression_mini_conv:opt_data
+#run_name: regression_mini_conv:opt_data
+run_name: debug
 experiment: RegressionExperiment
 
 data:

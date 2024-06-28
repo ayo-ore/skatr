@@ -76,6 +76,9 @@ class ViT(nn.Module):
             assert cfg.mask_frac < 1
             self.mask_token = nn.Parameter(torch.randn(dim))
 
+        if cfg.mask_frac_scale:
+            self.mask_token = nn.Parameter(torch.randn(dim))
+
     def pos_encoding(self): # TODO: Simplify for fixed dim=3
         grids = [getattr(self, f'grid_{i}') for i in range(3)]
         coords = torch.meshgrid(*grids, indexing='ij')
@@ -274,6 +277,7 @@ class Block(nn.Module):
     
 def check_shapes(cfg):
     for i, (s, p) in enumerate(zip(cfg.in_shape[1:], cfg.patch_shape)):
+        print(f'{s=}, {p=}')
         assert not s % p, \
             f"Input size ({s}) should be divisible by patch size ({p}) in axis {i}."
     assert not cfg.hidden_dim % 6, \
