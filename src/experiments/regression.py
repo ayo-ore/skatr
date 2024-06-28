@@ -36,6 +36,7 @@ class RegressionExperiment(BaseExperiment):
         # create plots
         with PdfPages(savepath) as pdf:
 
+            NRMSEs = []
             # iterate over individual parameters
             for i in range(label_pred_pairs.shape[1]):
 
@@ -44,6 +45,7 @@ class RegressionExperiment(BaseExperiment):
 
                 lo, hi = labels.min(), labels.max() # range of true targets
                 NRMSE = np.sqrt(((labels-preds)**2).mean())/(hi-lo)
+                NRMSEs.append(NRMSE)
                 
                 pad = 0.1*(hi-lo)
                 ax.plot([lo-pad, hi+pad], [lo-pad, hi+pad], color='crimson', ls='--', lw=2)
@@ -55,7 +57,8 @@ class RegressionExperiment(BaseExperiment):
                 fig.tight_layout()
 
                 pdf.savefig(fig)
-
+            
+        self.log.info(f'Mean NRMSE: {round(np.mean(NRMSEs), 3)}')
         self.log.info(f'Saved plots to {savepath}')
     
     @torch.inference_mode()
