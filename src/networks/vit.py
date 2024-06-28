@@ -42,7 +42,7 @@ class ViT(nn.Module):
         self.embedding = nn.Linear(patch_dim, dim)
 
         # position encoding
-        fourier_dim = dim // 6 # sin/cos features for each dime
+        fourier_dim = dim // 6 # sin/cos features for each dim
         w = torch.arange(fourier_dim) / (fourier_dim - 1)
         w = (1. / (10_000 ** w)).repeat(3)
         self.pos_encoding_freqs = nn.Parameter(
@@ -72,9 +72,7 @@ class ViT(nn.Module):
         self.out_act = getattr(F, cfg.out_act) if cfg.out_act else nn.Identity()
 
         # masking
-        if cfg.mask_frac > 0:
-            assert cfg.mask_frac < 1
-            self.mask_token = nn.Parameter(torch.randn(dim))
+        self.mask_token = nn.Parameter(torch.randn(dim)) # TODO: initialize only when used
 
         if cfg.mask_frac_scale:
             self.mask_token = nn.Parameter(torch.randn(dim))
@@ -94,11 +92,11 @@ class ViT(nn.Module):
         ]
         return torch.cat(features, dim=1)
 
-    def forward(self, x, mask=False):
+    def forward(self, x, mask=None):
         """
         Forward pass of ViT.
         x   : tensor of spatial inputs with shape (B, C, *axis_sizes)
-        mask: whether or not mask patches (for self supervision).
+        mask: a tensor of patch indices that should be masked out of `x`.
         """
         # apply convolutional layer
         if self.cfg.in_conv:
@@ -107,15 +105,13 @@ class ViT(nn.Module):
         # patchify input and embed
         x = self.to_patches(x) # (B, T, D), with T = prod(num_patches)
         x = self.embedding(x)
-        if mask:
-            mask_block = self.cfg.mask_block
-            if mask_block:
-                assert self.cfg.mask_frac_scale
-                assert self.cfg.mask_aspect_scale
-                self.random_mask_block_patches(x)
-            if not mask_block:
-                self.random_mask_patches(x)
-        x = x + self.pos_encoding() # TODO: Check whether masked tokens should really get a position embedding
+
+        # optionally apply mask
+        if mask is not None:
+            x = self.apply_mask(x, mask)
+
+        # add position encoding
+        x = x + self.pos_encoding()
 
         # process patches with transformer blocks
         for block in self.blocks:
@@ -136,23 +132,19 @@ class ViT(nn.Module):
         )
         return x
 
-    def random_mask_patches(self, x):
+    def apply_mask(self, x, mask):
         """
-        Masks x by randomly selecting patches in each batch and replacing their
-        embedding with `self.mask_token`. The number of patches to mask is 
-        determined by the `self.cfg.mask_frac` option.
-        """
-        if not self.cfg.mask_frac and not self.cfg.mask_frac_scale:
-            print("WARNING: Option `mask_frac` is zero. No masking will be applied.")
-            return x
+        :param x: input tensor with shape (B, T, D)
+        :param mask: tensor with shape (B, T) containing indices in the range [0,T)
+        key: (B [batch size], T [number of patches], D [embed dim])
 
+        Replaces patch embeddings in `x` with the network's mask token at indices speficied by `mask`.
+        """
         B, T = x.size(0), math.prod(self.num_patches)
-        num_masked = int(self.cfg.mask_frac * T)
         full_mask = repeat(self.mask_token, 'd -> b t d', b=B, t=T)
-        mask_idcs = torch.rand(B, T, device=x.device).topk(k=num_masked, dim=-1).indices
-        mask_map = torch.zeros((B, T), device=x.device).scatter_(-1, mask_idcs, 1).bool()
+        mask_map = torch.zeros((B, T), device=x.device).scatter_(-1, mask, 1).bool()
 
-        return torch.where(mask_map[..., None], full_mask, x)
+        return torch.where(mask_map[..., None], full_mask, x)    
 
     def random_mask_block_patches(self, x):
         """

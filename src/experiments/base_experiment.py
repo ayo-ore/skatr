@@ -3,8 +3,8 @@ import torch
 from abc import abstractmethod
 from torch.utils.data import DataLoader, random_split
 
-from src import transforms
-from src.trainers.trainer import Trainer
+from src.utils import transforms
+from src.utils.trainer import Trainer
 
 class BaseExperiment:
 
@@ -31,12 +31,13 @@ class BaseExperiment:
 
         self.log.info(f'Using device {self.device}')
         self.log.info('Initializing model')
-        model = self.get_model().to(device=self.device)
-        # TODO: Implement option for memory format in trainer
-        self.log.info(
-            f'Model ({model.__class__.__name__}[{model.net.__class__.__name__}]) has '
-            f'{sum(w.numel() for w in model.trainable_parameters)} trainable parameters'
-        )
+        if self.cfg.train or self.cfg.evaluate:
+            model = self.get_model().to(device=self.device)
+            # TODO: Implement option for memory format in trainer
+            self.log.info(
+                f'Model ({model.__class__.__name__}[{model.net.__class__.__name__}]) has '
+                f'{sum(w.numel() for w in model.trainable_parameters)} trainable parameters'
+            )
 
         if self.cfg.train:
             self.log.info('Initializing trainer')
@@ -45,7 +46,7 @@ class BaseExperiment:
             )
             self.log.info('Running training')
             trainer.run_training()
-        else:
+        elif self.cfg.evaluate:
             self.log.info(f'Loading model state from {self.cfg.prev_exp_dir}.')
             model.load(self.exp_dir, self.device)
             model.eval()
@@ -81,7 +82,7 @@ class BaseExperiment:
         # create dataloaders
         dataloaders = {
             k: DataLoader(
-                d, shuffle=True, drop_last=True, num_workers=self.cfg.num_cpus,
+                d, shuffle=k=='train', drop_last=True, num_workers=self.cfg.num_cpus,
                 pin_memory=False, # pinning can cause memory issues with large lightcones
                 batch_size=(
                     self.cfg.training.batch_size if k=='train'

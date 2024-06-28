@@ -10,16 +10,13 @@ ema_momentum: 0.9997
 momentum_schedule: False
 sim: l1
 augment: True
-mask: True
 norm_target: True
+masking: random
+mask_frac: 0.5
 
 net:
   out_channels: ${latent_dim}
   out_act: null
-  mask_frac: False
-  mask_block: True
-  mask_frac_scale: [0.3, 0.5]
-  mask_aspect_scale: [0.75, 1.5]
 
 data:
   # not stored in gpu:

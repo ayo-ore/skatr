@@ -3,12 +3,13 @@ import numpy as np
 import os
 import torch
 from glob import glob
+from matplotlib import gridspec
 from matplotlib.backends.backend_pdf import PdfPages
 from torch.utils.data import Dataset
 
 from src.experiments.base_experiment import BaseExperiment
 from src.models import Regressor
-from src.utils import PARAM_NAMES
+from src.utils.plotting import PARAM_NAMES
 
 class RegressionExperiment(BaseExperiment):
     
@@ -22,6 +23,15 @@ class RegressionExperiment(BaseExperiment):
         return Regressor(self.cfg)
     
     def plot(self):
+        
+        # pyplot config
+        plt.rcParams['font.family'] = 'serif'
+        plt.rcParams['text.usetex'] = True
+        plt.rcParams['text.latex.preamble']=(
+            r'\usepackage{amsmath}'
+            r'\usepackage[bitstream-charter]{mathdesign}'
+        )
+
         label_pred_pairs = np.load(os.path.join(self.exp_dir, 'label_pred_pairs.npy'))
         
         # check for existing plots
@@ -33,6 +43,10 @@ class RegressionExperiment(BaseExperiment):
             os.makedirs(old_dir, exist_ok=True)
             os.rename(savepath, os.path.join(old_dir, savename))
 
+        # marker settings
+        ref_kwargs = {'color': 'crimson', 'ls': '--', 'lw': 2, 'alpha': 0.8}
+        dot_kwargs = {'alpha': 0.6, 'color': 'navy', 's': 15}
+
         # create plots
         with PdfPages(savepath) as pdf:
 
@@ -40,25 +54,49 @@ class RegressionExperiment(BaseExperiment):
             # iterate over individual parameters
             for i in range(label_pred_pairs.shape[1]):
 
-                fig, ax = plt.subplots(figsize=(5,4))
+                # make figure with ratio axis
+                fig, ax = plt.subplots(figsize=(5,5))
+                main_cell, ratio_cell = gridspec.GridSpecFromSubplotSpec(
+                    2, 1, subplot_spec=ax, height_ratios=[5,1.5], hspace=0.05
+                )
+                main_ax = plt.subplot(main_cell)
+                ratio_ax = plt.subplot(ratio_cell)
+
+                # unpack labels/preds and calculate metric
                 labels, preds = label_pred_pairs[:, i].T
-
                 lo, hi = labels.min(), labels.max() # range of true targets
-                NRMSE = np.sqrt(((labels-preds)**2).mean())/(hi-lo)
-                NRMSEs.append(NRMSE)
+                MARE = (abs(preds-labels)/labels).mean()
                 
-                pad = 0.1*(hi-lo)
-                ax.plot([lo-pad, hi+pad], [lo-pad, hi+pad], color='crimson', ls='--', lw=2)
-                ax.scatter(labels, preds, alpha=0.4, color='darkblue')
-                ax.text(0.1, 0.9, f"{NRMSE=:.3f}", transform=ax.transAxes)
+                # fill main axis
+                pad = 0.02*(hi-lo)
+                main_ax.scatter(labels, preds, **dot_kwargs)
+                main_ax.plot([lo-pad, hi+pad], [lo-pad, hi+pad], **ref_kwargs)
+                main_ax.text(0.1, 0.9, f"{MARE=:.1e}", transform=ax.transAxes)
+                
+                # fill ratio axis
+                ratio_ax.scatter(labels, abs(preds - labels)/labels, **dot_kwargs)
+                ratio_ax.semilogy()
 
-                ax.set_xlabel(PARAM_NAMES[i])
-                ax.set_ylabel(f'Prediction')
-                fig.tight_layout()
+                # axis labels
+                main_ax.set_title(PARAM_NAMES[i], fontsize=14)
+                main_ax.set_ylabel('Network', fontsize=13)
+                ratio_ax.set_ylabel(
+                    r'$\left|\frac{\text{Net}\,-\,\text{True}}{\text{True}}\right|$', fontsize=10
+                )
+                ratio_ax.set_xlabel('Truth', fontsize=13)
 
-                pdf.savefig(fig)
-            
-        self.log.info(f'Mean NRMSE: {round(np.mean(NRMSEs), 3)}')
+                # axis limits
+                main_ax.set_xlim([lo-pad, hi+pad])
+                main_ax.set_ylim([lo-pad, hi+pad])
+                ratio_ax.set_xlim(*main_ax.get_xlim())
+                ratio_ax.set_ylim(1e-3, 1)
+
+                # clean
+                ax.set_axis_off()
+                main_ax.set_xticklabels([])
+
+                pdf.savefig(fig, bbox_inches='tight')
+
         self.log.info(f'Saved plots to {savepath}')
     
     @torch.inference_mode()

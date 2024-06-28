@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import random
 from omegaconf import DictConfig
 
 from src import networks
 from src.models.base_model import Model
+from src.utils import masks
 
 class Pretrainer(Model):
 
@@ -13,17 +15,9 @@ class Pretrainer(Model):
         self.predictor = networks.MLP(cfg.predictor)
         self.student = self.net
         self.teacher = self.net.__class__(cfg.net)
-
-        ''' 
         match cfg.sim:
-            case 'l1': self.sim = nn.L1Loss(reduction='mean')
-            case 'l2': self.sim = nn.MSELoss(reduction='mean')
-            case 'cosine': self.sim = -nn.CosineSimilarity(dim=1, eps=1e-6)
-        Ayo uses different functions:
-        '''
-        match cfg.sim:
-            case 'l1': self.sim = lambda x1, x2: (x1-x2).abs().mean(1)
-            case 'l2': self.sim = lambda x1, x2: nn.functional.mse_loss(x1, x2)
+            case 'l1': self.sim = lambda x1, x2: -F.l1_loss(x1, x2)
+            case 'l2': self.sim = lambda x1, x2: F.mse_loss(x1, x2)
             case 'cosine': self.sim = -nn.CosineSimilarity(dim=1, eps=1e-6)
         self.norm = nn.BatchNorm1d(cfg.latent_dim)
 
@@ -33,8 +27,11 @@ class Pretrainer(Model):
         x1 = augment(batch[0], include_identity=True) if self.cfg.augment else batch[0]
         x2 = augment(x1) if self.cfg.augment else x1
 
+        # sample mask
+        mask = self.sample_mask(x1.size(0), x1.device)
+            
         # embed masked batch
-        embedding = self.student(x1, mask=self.cfg.mask)
+        embedding = self.student(x1, mask=mask)
 
         # embed full batch without grads
         with torch.no_grad():
@@ -50,22 +47,35 @@ class Pretrainer(Model):
         
         return loss.mean()
     
-    def update(self, optimizer, loss):
+    def update(self, optimizer, loss, step=None, total_steps=None):
         
         # student update
         super().update(optimizer, loss)
 
         # teacher update via exponential moving average of student
         tau = self.cfg.ema_momentum
+        if self.cfg.momentum_schedule: # linear increase to tau=1
+            frac = step/total_steps
+            tau = tau + (1-tau)*frac
+
         for ps, pt in zip(self.student.parameters(), self.teacher.parameters()):
             pt = tau*pt + (1-tau)*ps
 
-    def forward(self, x, mask=False):
+    def forward(self, x, mask=None):
         return self.student(x, mask=mask)
 
     @torch.inference_mode()
     def embed(self, x):
         return self.student(x)
+    
+    def sample_mask(self, batch_size, device):
+        num_patches = self.student.num_patches
+        mask_frac = self.cfg.mask_frac # TODO: replace with fixed range?
+        match self.cfg.masking:
+            case 'random':
+                return masks.random_patch_mask(num_patches, mask_frac, batch_size, device)
+            case '_':
+                return None  
 
 def augment(x, include_identity=False):
     """Applies random rotation + reflection, avoiding double counting"""

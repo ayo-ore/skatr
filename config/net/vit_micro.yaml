@@ -13,5 +13,4 @@ proj_drop: 0.
 mlp_drop: 0.25
 learn_pos_encoding: True
 out_act: sigmoid
-out_mlp: True
 checkpoint_grads: False
