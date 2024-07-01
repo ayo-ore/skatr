@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import random
 from omegaconf import DictConfig
 
 from src import networks
 from src.models.base_model import Model
-from src.utils import masks
+from src.utils import augmentations, masks
 
 class Pretrainer(Model):
 
@@ -24,8 +23,8 @@ class Pretrainer(Model):
     def batch_loss(self, batch):        
 
         # augment batch
-        x1 = augment(batch[0], include_identity=True) if self.cfg.augment else batch[0]
-        x2 = augment(x1) if self.cfg.augment else x1
+        x1 = batch[0]
+        x2 = self.augment(x1) if self.cfg.augment else x1
 
         # sample mask
         mask = self.sample_mask(x1.size(0), x1.device)
@@ -79,21 +78,3 @@ class Pretrainer(Model):
                     return masks.block_mask(num_patches, cfg, batch_size, device)[0]
                 case 'multi-block':
                     return masks.context_target_mask(num_patches, cfg, batch_size, device)
-
-def augment(x, include_identity=False):
-    """Applies random rotation + reflection, avoiding double counting"""
-    
-    # construct options
-    idcs = [(0, 1), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3)]
-    if include_identity:
-        idcs.append((0,0))
-
-    # select from options
-    ref_idx, rot_idx = random.choice(idcs)
-
-    # apply transformations
-    x = torch.rot90(x, rot_idx, dims=[2,3])
-    if ref_idx:
-        x = x.transpose(2, 3)
-    
-    return x  

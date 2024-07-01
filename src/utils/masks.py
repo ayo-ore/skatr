@@ -8,9 +8,10 @@ def patch_mask(num_patches, cfg, batch_size, device):
     Returns a Masks x by randomly selecting patches in each batch and replacing their
     embedding with `mask_token`. The number of patches to mask is 
     determined by the `cfg.mask_frac` option.
-    """
 
-    # get total number of patches
+    Returns a tensor with shape (B [batch size], K ]) containing random indices in the range [0,T)
+    with T = prod(num_patches) and K = T * cfg.mask_frac.
+    """
     T = math.prod(num_patches)
     # get number of patches to be masked
     num_masked = int(cfg.mask_frac * T)
