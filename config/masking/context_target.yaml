@@ -1,4 +1,4 @@
-name: random
+name: context_target
 num_targets: 4
 spacial_aspect: [0.75, 1.5]
 short_num_blocks: 8
