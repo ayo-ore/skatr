@@ -30,6 +30,6 @@ training:
   
 defaults:
   - default
-  - preprocessing: xandy
+  - preprocessing: xandy_new
   - net: vit_micro
   - _self_
