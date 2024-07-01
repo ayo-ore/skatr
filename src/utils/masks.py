@@ -36,13 +36,13 @@ def context_target_mask(num_patches, cfg, batch_size, device):
             num_blocks = cfg.long_num_blocks
 
         target_mask, context_mask = block_mask(num_patches, cfg, batch_size, mode, device)
-        for i in range(num_blocks) - 1:
-            target_mask_i, context_mask_i = target_mask, block_mask(num_patches, cfg, batch_size, mode, device)
+        for i in range(num_blocks - 1):
+            target_mask_i, context_mask_i = block_mask(num_patches, cfg, batch_size, mode, device)
             torch.cat((target_mask, target_mask_i), dim=0)
             torch.cat((context_mask, context_mask_i), dim=0)
         
-        target_masks.append(target_mask)
-        context_masks.append(context_mask)
+        target_masks.append(torch.unique(target_mask))
+        context_masks.append(torch.unique(context_mask))
     return target_masks, context_mask
 
 def block_mask(num_patches, cfg, batch_size, mode, device):
@@ -99,18 +99,6 @@ def block_size(num_patches, cfg, mode='context'):
             spatial_frac_range = cfg.long_spatial_frac
             redshift_frac_range = cfg.long_redshift_frac
 
-    def sample_aspect_ratio(min, max):
-        # Sample a single aspect-ratio, ensuring that both dimensions are equally 
-        # likely to be scaled up or down
-        if torch.randint(0, 2, (1,)) == 0:
-            max = 1.
-        else:
-            min = 1.
-        return (min - max) * torch.rand(1,) + max
-
-    def sample_ratio(min, max):
-        return (min - max) * torch.rand(1,) + max
-
     spatial_frac = sample_ratio(*spacial_aspect_range) if type(spacial_aspect_range) != int else spacial_aspect_range
     redshift_frac = sample_ratio(*redshift_frac_range) if type(redshift_frac_range) != int else redshift_frac_range
     while True:
@@ -129,3 +117,15 @@ def block_size(num_patches, cfg, mode='context'):
         dims[i] = round(dim * max_dims[i])
     
     return dims
+
+def sample_aspect_ratio(min, max):
+    # Sample a single aspect-ratio, ensuring that both dimensions are equally 
+    # likely to be scaled up or down
+    if torch.randint(0, 2, (1,)) == 0:
+        max = 1.
+    else:
+        min = 1.
+    return (min - max) * torch.rand(1,) + max
+
+def sample_ratio(min, max):
+    return (min - max) * torch.rand(1,) + max
