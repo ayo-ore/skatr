@@ -74,9 +74,6 @@ class ViT(nn.Module):
         # masking
         self.mask_token = nn.Parameter(torch.randn(dim)) # TODO: initialize only when used
 
-        if cfg.mask_frac_scale:
-            self.mask_token = nn.Parameter(torch.randn(dim))
-
     def pos_encoding(self): # TODO: Simplify for fixed dim=3
         grids = [getattr(self, f'grid_{i}') for i in range(3)]
         coords = torch.meshgrid(*grids, indexing='ij')
