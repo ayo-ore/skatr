@@ -14,6 +14,8 @@ class Pretrainer(Model):
         self.predictor = networks.MLP(cfg.predictor)
         self.student = self.net
         self.teacher = self.net.__class__(cfg.net)
+        self.norm = nn.BatchNorm1d(cfg.latent_dim)
+        self.augment = augmentations.RotateAndReflect()
         match cfg.sim:
             case 'l1': self.sim = lambda x1, x2: -F.l1_loss(x1, x2)
             case 'l2': self.sim = lambda x1, x2: F.mse_loss(x1, x2)
