@@ -100,7 +100,7 @@ def block_size(num_patches, cfg, mode='context'):
             spatial_frac_range = cfg.long_spatial_frac
             redshift_frac_range = cfg.long_redshift_frac
 
-    spatial_frac = sample_ratio(*spacial_aspect_range) if type(spacial_aspect_range) != int else spacial_aspect_range
+    spatial_frac = sample_ratio(*spatial_frac_range) if type(spatial_frac_range) != int else spatial_frac_range
     redshift_frac = sample_ratio(*redshift_frac_range) if type(redshift_frac_range) != int else redshift_frac_range
     while True:
         # Sample ratios such that all dimensions are restricted to within a unit cube

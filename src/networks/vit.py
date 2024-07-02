@@ -266,7 +266,6 @@ class Block(nn.Module):
     
 def check_shapes(cfg):
     for i, (s, p) in enumerate(zip(cfg.in_shape[1:], cfg.patch_shape)):
-        print(f'{s=}, {p=}')
         assert not s % p, \
             f"Input size ({s}) should be divisible by patch size ({p}) in axis {i}."
     assert not cfg.hidden_dim % 6, \
