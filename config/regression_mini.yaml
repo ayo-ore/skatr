@@ -9,6 +9,9 @@ training:
   epochs: 120
   lr: 1.e-4
   batch_size: 64
+
+net:
+  use_head: True
   
 defaults:
   - default
