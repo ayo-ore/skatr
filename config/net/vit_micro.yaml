@@ -10,7 +10,7 @@ num_heads: 4
 mlp_ratio: 2.0
 attn_drop: 0.
 proj_drop: 0.
-mlp_drop: 0.
+mlp_drop: 0. # mlp and head
 learn_pos_encoding: True
 out_act: sigmoid
 use_mask_token: True
@@ -22,7 +22,8 @@ head:
   cfg:
     units:
       - ${net.hidden_dim}
-      - ${net.hidden_dim}
+      - 64
+      - 64
       - ${net.out_channels}
     act: relu
     out_act: ${net.out_act}
