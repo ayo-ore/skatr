@@ -1,0 +1,33 @@
+run_name: fine_regression_mini_${net.arch}
+experiment: RegressionExperiment
+
+backbone: /remote/gpu00/nordmann/skatr/runs/pretraining_mini/2024-07-15_10-09-39
+latent_dim: 144
+
+net:
+  units:
+  - ${latent_dim}
+  - ${latent_dim}
+  - 6
+  out_act: sigmoid
+
+data:
+  dir: /remote/jerry/nordmann/data_new/x2
+  #dir: /scratch/ore/data_new/x2
+  #dir: /scratch/nordmann/data_new/x2
+  #dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x2
+  file_by_file: False
+
+cluster:
+  queue: a30
+  node: 1
+
+training:
+  epochs: 120
+  batch_size: 64
+  
+defaults:
+  - default
+  - preprocessing: xandy
+  - net: mlp
+  - _self_
