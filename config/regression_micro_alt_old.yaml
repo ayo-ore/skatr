@@ -34,6 +34,7 @@ training:
   lr: 1.e-4
   batch_size: 64
   save_best_epoch: True
+  patience: 35
   
 net:
   use_head: True

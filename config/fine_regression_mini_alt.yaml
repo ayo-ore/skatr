@@ -7,7 +7,8 @@ latent_dim: 144
 net:
   units:
   - ${latent_dim}
-  - ${latent_dim}
+  - 64
+  - 64
   - 6
   out_act: sigmoid
 
@@ -25,9 +26,10 @@ cluster:
   node: 1
 
 training:
-  epochs: 120
+  epochs: 300
+  lr: 1.e-2
   batch_size: 64
-save_best_epoch: True
+  patience: 35
 
 freeze_backbone: True
   

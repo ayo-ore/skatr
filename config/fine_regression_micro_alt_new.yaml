@@ -7,7 +7,8 @@ latent_dim: 144
 net:
   units:
   - ${latent_dim}
-  - ${latent_dim}
+  - 64
+  - 64
   - 6
   out_act: sigmoid
 
@@ -26,12 +27,10 @@ cluster:
 
 training:
   epochs: 300
-  lr: 1.e-3
+  lr: 1.e-2
   batch_size: 64
-  scheduler:
-    name: OneCycleLR
-    kwargs: {max_lr: 5.e-3}
   save_best_epoch: True
+  patience: 35
 
 freeze_backbone: True
   
