@@ -163,3 +163,4 @@ cython_debug/
 #.idea/
 
 21cm-wrapper/
+plots/
