@@ -18,7 +18,7 @@ data:
   # optional data
   dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x5
 
-  file_by_file: True
+  file_by_file: False
 
 cluster:
   queue: a30
