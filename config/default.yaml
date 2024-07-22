@@ -42,6 +42,7 @@ training:
   use_tensorboard: True
   
 backbone: null
+freeze_backbone: True
 
 defaults:
   - cluster: pbs
