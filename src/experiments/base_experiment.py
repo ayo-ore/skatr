@@ -67,13 +67,14 @@ class BaseExperiment:
             self.plot()
     
     def get_dataloaders(self, dataset):
-
-        assert sum(self.cfg.data.splits.values()) == 1.
         
         # partition the dataset using self.split_func
+        sumToOne = sum(self.cfg.data.splits.values()) == 1.
+        if not sumToOne:
+            print("Warning: Splits don't add up to 1. Setting validation split accordingly")
         trn = self.cfg.data.splits.train
-        val = self.cfg.data.splits.val
         tst = self.cfg.data.splits.test
+        val = self.cfg.data.splits.val if sumToOne else (1. - trn - tst)
         dataset_splits = dict(zip(
             ('train', 'val', 'test'), self.split_func(dataset, split_sizes=[trn, val, tst])
         ))
