@@ -1,0 +1,42 @@
+run_name: fine_regression_micro_${net.arch}_old
+experiment: RegressionExperiment
+
+backbone: /remote/gpu02/ore/skatr/runs/pretraining_micro/2024-07-08_16-40-41
+latent_dim: 144
+
+net:
+  units:
+  - ${latent_dim}
+  - ${latent_dim}
+  - 6
+  out_act: sigmoid
+
+data:
+  #dir: /remote/jerry/nordmann/data_new/x5
+  #dir: /scratch/ore/data_new/x5
+  #dir: /scratch/nordmann/data_new/x5
+  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
+  file_by_file: False
+  sequential_splits: True
+  splits: {train: 0.75, val: 0.1, test: 0.15}
+
+cluster:
+  queue: a30
+  node: 1
+
+training:
+  epochs: 300
+  lr: 1.e-3
+  batch_size: 64
+  scheduler:
+    name: OneCycleLR
+    kwargs: {max_lr: 5.e-3}
+  save_best_epoch: True
+
+freeze_backbone: True
+  
+defaults:
+  - default
+  - preprocessing: xandy
+  - net: mlp
+  - _self_

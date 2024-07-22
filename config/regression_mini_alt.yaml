@@ -1,0 +1,23 @@
+run_name: regression_mini_${net.arch}
+experiment: RegressionExperiment
+
+data:
+  dir: /scratch/nordmann/data_new/x2
+  #dir: /scratch/ore/data/x2
+  file_by_file: True
+  sequential_splits: True
+
+training:
+  epochs: 120
+  lr: 1.e-4
+  batch_size: 64
+  save_best_epoch: True
+
+net:
+  use_head: True
+  
+defaults:
+  - default
+  - preprocessing: xandy_new
+  - net: vit_mini
+  - _self_

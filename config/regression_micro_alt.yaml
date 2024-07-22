@@ -1,0 +1,44 @@
+run_name: regression_micro_${net.arch}
+experiment: RegressionExperiment
+
+data:
+  # not stored in gpu:
+  # also use cluster.node=1 (no preferred gpu)
+  #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
+  # new data
+  #dir: /remote/jerry/nordmann/data_new/x5
+  # new data on gpu02
+  #dir: /scratch/ore/data_new/x5
+  # new data on jerry:
+  #dir: /scratch/data/x5
+  # stored gpu01:
+  #dir: /scratch2/heneka/21cmlightcones/pure_simulations/x5
+  # stored gpu02:
+  #dir: /scratch/ore/data/x5
+  # in pbs.yaml node: gpu02
+  # increasingly worse with growing epochs
+  # optional data
+  dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x5
+
+  file_by_file: False
+  sequential_splits: True
+  splits: {train: 0.75, val: 0.1, test: 0.15}
+
+cluster:
+  queue: a30
+  node: 1
+
+training:
+  epochs: 300
+  lr: 1.e-4
+  batch_size: 64
+  save_best_epoch: True
+  
+net:
+  use_head: True
+  
+defaults:
+  - default
+  - preprocessing: xandy
+  - net: vit_micro
+  - _self_
