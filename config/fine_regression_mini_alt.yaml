@@ -18,7 +18,7 @@ data:
   dir: /scratch/nordmann/data_new/x2
   #dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x2
   file_by_file: True
-  sequential_splits: True
+  sequential_splits: False
   splits: {train: 0.75, val: 0.1, test: 0.15}
 
 cluster:

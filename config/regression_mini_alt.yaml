@@ -5,7 +5,7 @@ data:
   dir: /scratch/nordmann/data_new/x2
   #dir: /scratch/ore/data/x2
   file_by_file: True
-  sequential_splits: True
+  sequential_splits: False
 
 training:
   epochs: 120
