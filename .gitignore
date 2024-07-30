@@ -164,3 +164,4 @@ cython_debug/
 
 21cm-wrapper/
 plots/
+notebooks/
