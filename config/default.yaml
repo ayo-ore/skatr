@@ -17,9 +17,10 @@ prev_exp_dir: null
 data:
   dir: /scratch2/heneka/21cmlightcones/pure_simulations/
   splits: {train: 0.75, val: 0.1, test: 0.15}
-  sequential_splits: True
+  sequential_splits: False # TODO: understand why this creates strong bias
   on_gpu: False
   file_by_file: True
+  dedicated_test: False
 
 training:
   epochs: 1

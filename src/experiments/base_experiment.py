@@ -28,10 +28,14 @@ class BaseExperiment:
     def run(self):
 
         self.log.info('Reading data')
-        dataset = self.get_dataset() # TODO: Print the dataset signature/shape
-
-        self.log.info('Initializing dataloaders')
-        dataloaders = self.get_dataloaders(dataset)
+        if self.cfg.data.dedicated_test:
+            dataset, dataset_test = self.get_dataset() # TODO: Print the dataset signature/shape
+            self.log.info('Initializing dataloaders')
+            dataloaders = self.get_dataloaders(dataset, dataset_test=dataset_test)
+        else:
+            dataset = self.get_dataset()
+            self.log.info('Initializing dataloaders')
+            dataloaders = self.get_dataloaders(dataset)
 
         self.log.info(f'Using device {self.device}')
         self.log.info('Initializing model')
@@ -66,7 +70,7 @@ class BaseExperiment:
             self.log.info('Making plots')
             self.plot()
     
-    def get_dataloaders(self, dataset):
+    def get_dataloaders(self, dataset, dataset_test=False):
         
         # partition the dataset using self.split_func
         sumToOne = sum(self.cfg.data.splits.values()) == 1.
@@ -75,10 +79,18 @@ class BaseExperiment:
         trn = self.cfg.data.splits.train
         tst = self.cfg.data.splits.test
         val = self.cfg.data.splits.val if sumToOne else (1. - trn - tst)
-        dataset_splits = dict(zip(
-            ('train', 'val', 'test'), self.split_func(dataset, split_sizes=[trn, val, tst])
-        ))
         split_sizes = [trn, val, tst]
+
+        if self.cfg.data.dedicated_test:
+            val = 1. - trn
+            splits = self.split_func(dataset, split_sizes=[trn, val])
+            dataset_tst = dataset_test
+            dataset_splits = {'train': splits[0], 'val': splits[1], 'test': dataset_tst}
+        else:
+            dataset_splits = dict(zip(
+                ('train', 'val', 'test'), self.split_func(dataset, split_sizes=[trn, val, tst])
+            ))
+
         #print(f'Seq: {self.sequential_split(dataset, split_sizes)}')
         print(f'Random: {random_split(dataset, split_sizes, generator=torch.Generator().manual_seed(1729))[1].__len__()}')
 

@@ -15,9 +15,15 @@ class RegressionExperiment(BaseExperiment):
     
     def get_dataset(self):
         if self.cfg.data.file_by_file:
-            return RegressionDatasetByFile(self.cfg.data)
+            if self.cfg.data.dedicated_test:
+                return RegressionDatasetByFile(self.cfg.data), RegressionDatasetByFile(self.cfg.data, mode='test')
+            else:
+                return RegressionDatasetByFile(self.cfg.data)
         else:
-            return RegressionDataset(self.cfg.data, self.device)
+            if self.cfg.data.dedicated_test:
+                return RegressionDataset(self.cfg.data, self.device), RegressionDataset(self.cfg.data, self.device, mode='test')
+            else:
+                return RegressionDataset(self.cfg.data, self.device)
 
     def get_model(self):
         return Regressor(self.cfg)
@@ -156,9 +162,12 @@ class RegressionExperiment(BaseExperiment):
 
 class RegressionDatasetByFile(Dataset):
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, mode='default'):
+        if mode == 'test':
+            test_dir = '/test'
+        else: test_dir = ''
+        self.files = sorted(glob(f'{cfg.dir}{test_dir}/run*.npz'))
         self.cfg = cfg
-        self.files = sorted(glob(f'{cfg.dir}/run*.npz'))
 
     def __len__(self):
         return len(self.files)
@@ -173,8 +182,11 @@ class RegressionDatasetByFile(Dataset):
 
 class RegressionDataset(Dataset):
 
-    def __init__(self, cfg, device):
-        self.files = sorted(glob(f'{cfg.dir}/run*.npz'))
+    def __init__(self, cfg, device, mode='default'):
+        if mode == 'test':
+            test_dir = '/test'
+        else: test_dir = ''
+        self.files = sorted(glob(f'{cfg.dir}{test_dir}/run*.npz'))
         self.Xs, self.ys = [], []
         
         for f in self.files:
