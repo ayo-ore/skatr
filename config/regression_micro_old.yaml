@@ -1,4 +1,4 @@
-run_name: regression_micro_${net.arch}_old
+run_name: scratch_old
 experiment: RegressionExperiment
 
 data:

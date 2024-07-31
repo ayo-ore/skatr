@@ -1,4 +1,4 @@
-run_name: fine_regression_micro_${net.arch}_opt
+run_name: fine_old
 experiment: RegressionExperiment
 
 backbone: /remote/gpu02/ore/skatr/runs/pretraining_micro/2024-07-08_16-40-41
@@ -16,7 +16,7 @@ data:
   #dir: /remote/jerry/nordmann/data_new/x5
   #dir: /scratch/ore/data_new/x5
   #dir: /scratch/nordmann/data_new/x5
-  dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x5
+  dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
   file_by_file: False
   sequential_splits: False
   splits: {train: 0.75, val: 0.1, test: 0.15}
@@ -27,7 +27,7 @@ cluster:
 
 training:
   epochs: 300
-  lr: 1.e-2
+  lr: 5.e-3
   batch_size: 64
   patience: 35
 

@@ -1,0 +1,29 @@
+run_name: scratch_new
+experiment: RegressionExperiment
+
+data:
+  dir: /remote/jerry/nordmann/data_new/x5
+  file_by_file: False
+  sequential_splits: False
+  dedicated_test: True
+  splits: {train: 0.75, val: 0.1, test: 0.15}
+
+cluster:
+  queue: a30
+  node: 1
+
+training:
+  epochs: 600
+  lr: 1.e-4
+  batch_size: 64
+  save_best_epoch: True
+  patience: 20
+  
+net:
+  use_head: True
+
+defaults:
+  - default
+  - preprocessing: xandy_new
+  - net: vit_micro
+  - _self_

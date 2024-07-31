@@ -1,4 +1,4 @@
-run_name: fine_regression_micro_${net.arch}:m1
+run_name: fine_new
 experiment: RegressionExperiment
 
 # model 0
@@ -33,7 +33,7 @@ cluster:
 
 training:
   epochs: 120
-  lr: 1.e-2
+  lr: 5.e-3
   batch_size: 64
   save_best_epoch: True
   patience: 35

@@ -1,4 +1,4 @@
-run_name: regression_micro_${net.arch}_new
+run_name: scratch_old_opt
 experiment: RegressionExperiment
 
 data:
@@ -6,7 +6,7 @@ data:
   # also use cluster.node=1 (no preferred gpu)
   #dir: /remote/gpu01a/heneka/21cmlightcones/pure_simulations/x5
   # new data
-  dir: /remote/jerry/nordmann/data_new/x5
+  #dir: /remote/jerry/nordmann/data_new/x5
   # new data on gpu02
   #dir: /scratch/ore/data_new/x5
   # new data on jerry:
@@ -18,11 +18,10 @@ data:
   # in pbs.yaml node: gpu02
   # increasingly worse with growing epochs
   # optional data
-  #dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x5
+  dir: /remote/gpu01a/heneka/21cmlightcones/opt_simulations/x5
 
   file_by_file: False
   sequential_splits: False
-  dedicated_test: True
   splits: {train: 0.75, val: 0.1, test: 0.15}
 
 cluster:
@@ -38,9 +37,9 @@ training:
   
 net:
   use_head: True
-
+  
 defaults:
   - default
-  - preprocessing: xandy_new
+  - preprocessing: xandy
   - net: vit_micro
   - _self_
