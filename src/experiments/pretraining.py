@@ -10,9 +10,15 @@ class PretrainingExperiment(BaseExperiment):
     
     def get_dataset(self):
         if self.cfg.data.file_by_file:
-            return PretrainingDatasetByFile(self.cfg.data)
+            if self.cfg.data.dedicated_test:
+                return PretrainingDatasetByFile(self.cfg.data), PretrainingDatasetByFile(self.cfg.data, mode='test')
+            else:
+                return PretrainingDatasetByFile(self.cfg.data)
         else:
-            return PretrainingDataset(self.cfg.data, self.device)
+            if self.cfg.data.dedicated_test:
+                return PretrainingDataset(self.cfg.data, self.device), PretrainingDataset(self.cfg.data, self.device, mode='test')
+            else:
+                return PretrainingDataset(self.cfg.data, self.device)
 
     def get_model(self):
         model_cls = getattr(models, self.cfg.model)
@@ -28,9 +34,12 @@ class PretrainingExperiment(BaseExperiment):
 
 class PretrainingDatasetByFile(Dataset):
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, mode='default'):
+        if mode == 'test':
+            test_dir = '/test'
+        else: test_dir = ''
         self.cfg = cfg
-        self.files = sorted(glob(f'{cfg.dir}/run*.npz'))
+        self.files = sorted(glob(f'{cfg.dir}{test_dir}/run*.npz'))
 
     def __len__(self):
         return len(self.files)
@@ -44,8 +53,11 @@ class PretrainingDatasetByFile(Dataset):
 
 class PretrainingDataset(Dataset):
 
-    def __init__(self, cfg, device):
-        self.files = sorted(glob(f'{cfg.dir}/run*.npz'))
+    def __init__(self, cfg, device, mode='default'):
+        if mode == 'test':
+            test_dir = '/test'
+        else: test_dir = ''
+        self.files = sorted(glob(f'{cfg.dir}{test_dir}/run*.npz'))
         self.Xs = []
         
         for f in self.files:
