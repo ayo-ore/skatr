@@ -29,7 +29,8 @@ data:
   dir: /scratch/nordmann/data_new/x2
   #dir: /remote/gpu02/ore/data/x2
   file_by_file: False
-  sequential_splits: True
+  sequential_splits: False
+  dedicated_test: True
   splits: {train: 0.95, val: 0.05, test: 0.}
 
 cluster:
@@ -38,11 +39,11 @@ cluster:
   mem: 600gb # 21k lightcones = 462gb
 
 training:
-  epochs: 1200
+  epochs: 1500
   lr: 0.001
   batch_size: 64
   save_best_epoch: True
-  save_freq: 75
+  save_freq: 100
   optimizer:
     name: AdamW
     kwargs: {weight_decay: 0.001}

@@ -21,6 +21,7 @@ data:
 # new data on h100
   dir: /scratch/nordmann/data_new/x2
   file_by_file: False
+  dedicated_test: True
 
 training:
   epochs: 50
