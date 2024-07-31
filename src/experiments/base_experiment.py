@@ -91,9 +91,6 @@ class BaseExperiment:
                 ('train', 'val', 'test'), self.split_func(dataset, split_sizes=[trn, val, tst])
             ))
 
-        #print(f'Seq: {self.sequential_split(dataset, split_sizes)}')
-        print(f'Random: {random_split(dataset, split_sizes, generator=torch.Generator().manual_seed(1729))[1].__len__()}')
-
         # trainval_set, test_set = random_split(
         #     dataset, [trn + val, tst], generator=torch.Generator().manual_seed(1729)
         # )
