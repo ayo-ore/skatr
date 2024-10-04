@@ -4,7 +4,7 @@ experiment: RegressionExperiment
 target_indices: [0,1,2,3,4,5]
 
 data:
-  dir: /scratch/ore/data/x2
+  dir: /remote/gpu02/ore/data/x2
   file_by_file: True
 
 net:

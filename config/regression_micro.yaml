@@ -6,7 +6,7 @@ loss: l1
 gaussian: False
 
 data:
-  dir: /scratch/ore/data/x5
+  dir: /remote/gpu02/ore/data/x5
   file_by_file: False
   
 net:

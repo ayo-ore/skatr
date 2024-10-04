@@ -4,7 +4,7 @@ train: True
 evaluate: True
 plot: True
 
-proj_dir: /remote/gpu02/ore/skatr
+proj_dir: /remote/gpu03/schiller/skatr
 use_gpu: True
 num_cpus: 0
 device: 0

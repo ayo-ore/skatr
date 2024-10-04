@@ -11,7 +11,7 @@ cluster:
   queue: h100
   
 data:
-  dir: /scratch/ore/data/hr/half
+  dir: /remote/gpu02/ore/data/hr/half
   file_by_file: True
   
 net:

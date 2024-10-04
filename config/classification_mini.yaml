@@ -2,8 +2,8 @@ run_name: classification_mini_${net.arch}
 experiment: ClassificationExperiment
 
 data:
-  dir0: /scratch/ore/data/x2
-  dir1: /scratch/ore/data_new/x2
+  dir0: /remote/gpu02/ore/data/x2
+  dir1: /remote/gpu02/ore/data_new/x2
   file_by_file: True
   
 net:

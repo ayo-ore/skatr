@@ -39,7 +39,7 @@ attn_pool:
   out_channels: ${summary_dim}
 
 data:
-  dir: /scratch/ore/data/x5
+  dir: /remote/gpu02/ore/data/x5
   file_by_file: False
 
 training:
