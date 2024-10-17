@@ -45,6 +45,9 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from .configuration_phi3_v import Phi3VConfig
+# import sys
+# sys.path.append("/remote/gpu03/schiller/skatr/models/huggingface/microsoft/Phi-3.5-vision-instruct")
+from .skatr_vit_phi3_v import PretrainedViT, Phi3ImageEmbeddingSkatr
 
 try:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -58,10 +61,10 @@ import torch
 from torch import nn
 from transformers import CLIPVisionConfig, CLIPVisionModel, PretrainedConfig
 from transformers.models.clip.modeling_clip import CLIPAttention
+
 from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
-
 
 MAX_INPUT_ID = int(1e9)
 
@@ -114,7 +117,6 @@ class CLIPAttentionFA2(CLIPAttention):
         attn_output = self.out_proj(attn_output)
         return attn_output, None
 
-
 class Phi3ImageEmbedding(nn.Module):
     """Phi3 Image embedding."""
 
@@ -147,6 +149,10 @@ class Phi3ImageEmbedding(nn.Module):
                     clip_fa2 = CLIPAttentionFA2(clip_config)
                     del layer.self_attn
                     layer.self_attn = clip_fa2
+        elif isinstance(config.img_processor, dict) and config.img_processor.get('name', None) == 'vit':
+            self.img_processor = PretrainedViT(backbone_dir=config.img_processor['backbone_dir'])
+            image_dim_out = config.img_processor['image_dim_out']
+            self.num_img_tokens = config.img_processor['num_img_tokens']
         else:
             raise NotImplementedError(f'img_processor = {config.img_processor}, not implemented')
 
@@ -356,7 +362,6 @@ class Phi3ImageEmbedding(nn.Module):
             [image_features_hd, newline_embeddings], dim=2
         ).reshape(num_images, -1, hid_dim)
         return image_features_hd_newline
-
 
 logger = logging.get_logger(__name__)
 
@@ -1510,6 +1515,23 @@ class Phi3VModel(Phi3VPreTrainedModel):
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
         )
+
+    def exchange_vit_for_skatr(self, img_processor_config, embd_layer_config=None, pretrained_backbone_dir=None):
+        
+
+        self.config.img_processor = img_processor_config
+        if embd_layer_config:
+            self.config.embd_layer = embd_layer_config
+        embedding_config = {
+                'embedding_cls': self.config.embd_layer['embedding_cls'],
+                **self.config.embd_layer
+            }
+        self.vision_embed_tokens = Phi3ImageEmbeddingSkatr(
+            self.config,
+            wte=self.embed_tokens,
+            pretrained_backbone_dir=pretrained_backbone_dir,
+            **embedding_config
+            )
 
 
 class Phi3VForCausalLM(Phi3VPreTrainedModel):
