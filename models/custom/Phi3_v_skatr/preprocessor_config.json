@@ -1,0 +1,16 @@
+{
+  "auto_map": {
+    "AutoImageProcessor": "skatr_processor_phi3_v.Phi3VImageProcessorSkatr",
+    "AutoProcessor": "skatr_processor_phi3_v.Phi3VProcessorSkatr"
+  },
+  "image_mean": null,
+  "image_processor_type": "Phi3VImageProcessorSkatr",
+  "image_std": null,
+  "light_cone_dims": 3,
+  "patch_size": [
+    4,
+    4,
+    10
+  ],
+  "processor_class": "Phi3VProcessorSkatr"
+}

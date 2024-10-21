@@ -1,0 +1,6 @@
+{
+  "auto_map": {
+    "AutoProcessor": "skatr_processor_phi3_v.Phi3VProcessorSkatr"
+  },
+  "processor_class": "Phi3VProcessorSkatr"
+}

@@ -1,19 +1,19 @@
 {
-  "_name_or_path": "/remote/gpu03/schiller/skatr/models/huggingface_models/Phi3_5_v",
+  "_name_or_path": "LLM-ViT",
   "architectures": [
-    "Phi3VForCausalLM"
+    "LLMViTVForCausalLM"
   ],
   "attention_dropout": 0.0,
   "auto_map": {
-    "AutoConfig": "configuration_phi3_v.Phi3VConfig",
-    "AutoModelForCausalLM": "modeling_phi3_v.Phi3VForCausalLM"
+    "AutoConfig": "configuration_llm_vit.LLMViTConfig",
+    "AutoModelForCausalLM": "modeling_llm_vit.LLMViTForCausalLM"
   },
   "bos_token_id": 1,
   "embd_layer": {
     "embedding_cls": "image",
     "hd_transform_order": "sub_glb",
     "projection_cls": "mlp",
-    "use_hd_transform": true,
+    "use_hd_transform": false,
     "with_learnable_separator": true
   },
   "embd_pdrop": 0.0,
@@ -22,7 +22,7 @@
   "hidden_size": 3072,
   "img_processor": {
     "image_dim_out": 160,
-    "model_name": "vit_skatr",
+    "model_name": "vit",
     "name": "vit_skatr",
     "patch_size": [
       4,
@@ -33,7 +33,7 @@
   "initializer_range": 0.02,
   "intermediate_size": 8192,
   "max_position_embeddings": 131072,
-  "model_type": "phi3_v",
+  "model_type": "llm_vit",
   "num_attention_heads": 32,
   "num_hidden_layers": 32,
   "num_key_value_heads": 32,
@@ -93,7 +93,7 @@
       64.83999633789062
     ],
     "short_factor": [
-      1.08,
+       1.08,
       1.1,
       1.1300000000000001,
       1.2800000000000002,
@@ -148,7 +148,8 @@
   "sliding_window": 262144,
   "tie_word_embeddings": false,
   "torch_dtype": "bfloat16",
-  "transformers_version": "4.45.2",
+  "transformers_version": "4.38.1",
   "use_cache": true,
-  "vocab_size": 32064
+  "vocab_size": 32064,
+  "_attn_implementation": "flash_attention_2"
 }

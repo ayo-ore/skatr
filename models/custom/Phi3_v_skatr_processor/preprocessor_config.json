@@ -1,0 +1,8 @@
+{
+  "auto_map": {
+    "AutoImageProcessor": "processing_llm_vit.LLMViTImageProcessor",
+    "AutoProcessor": "processing_llm_vit.LLMViTVProcessor"
+  },
+  "image_processor_type": "LLMViTImageProcessor",
+  "processor_class": "LLMViTProcessor"
+}

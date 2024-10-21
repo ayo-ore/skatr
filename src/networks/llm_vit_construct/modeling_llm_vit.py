@@ -1,19 +1,6 @@
-# coding=utf-8
-# Copyright 2024 Microsoft and the HuggingFace Inc. team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Copied and modified from microsoft/Phi-3.5-vision-instruct (https://huggingface.co/microsoft/Phi-3.5-vision-instruct/resolve/main/config.json), modeling_phi3_v.py
 
-""" PyTorch Phi-3-V model."""
+""" PyTorch LLM-ViT model."""
 
 import inspect
 import math
@@ -44,10 +31,7 @@ from transformers.utils import (
     logging,
     replace_return_docstrings,
 )
-from .configuration_phi3_v import Phi3VConfig
-# import sys
-# sys.path.append("/remote/gpu03/schiller/skatr/models/huggingface/microsoft/Phi-3.5-vision-instruct")
-from .skatr_vit_phi3_v import PretrainedViT, Phi3ImageEmbeddingSkatr
+from .configuration_llm_vit import LLMViTConfig
 
 try:
     from flash_attn import flash_attn_func, flash_attn_varlen_func
@@ -61,6 +45,13 @@ import torch
 from torch import nn
 from transformers import CLIPVisionConfig, CLIPVisionModel, PretrainedConfig
 from transformers.models.clip.modeling_clip import CLIPAttention
+
+from einops import rearrange, repeat
+from functools import partial
+from torch.utils.checkpoint import checkpoint
+from itertools import pairwise
+
+import os
 
 from transformers.utils import logging
 
@@ -117,8 +108,350 @@ class CLIPAttentionFA2(CLIPAttention):
         attn_output = self.out_proj(attn_output)
         return attn_output, None
 
-class Phi3ImageEmbedding(nn.Module):
-    """Phi3 Image embedding."""
+class ViT(nn.Module):
+    """
+    A vision transformer network.
+    """
+
+    def __init__(
+        self,
+        patch_shape=[4, 4, 10],
+        in_shape=[1, 28, 28, 470],
+        hidden_dim=144,
+        learn_pos_encoding=True,
+        num_heads=4,
+        mlp_ratio=2.0,
+        mlp_drop=0.,
+        checkpoint_grads=False,
+        attn_drop=0.,
+        proj_drop=0.,
+        depth=4,
+        use_mask_token=True
+    ):
+        super().__init__()
+
+        self.patch_shape = patch_shape
+        in_channels, *axis_sizes = in_shape
+        dim = hidden_dim
+        
+        # embedding layer
+        self.patch_dim = math.prod(patch_shape) * in_channels
+        self.embedding = nn.Linear(self.patch_dim, dim)
+
+        # position encoding
+        self.learn_pos_encoding = learn_pos_encoding
+        fourier_dim = dim // 6 # sin/cos features for each dim
+        w = torch.arange(fourier_dim) / (fourier_dim - 1)
+        w = (1. / (10_000 ** w)).repeat(3)
+        self.pos_encoding_freqs = nn.Parameter(
+            w.log() if self.learn_pos_encoding else w, requires_grad=self.learn_pos_encoding
+        )
+        self.init_pos_grid(axis_sizes)
+
+        # transformer stack
+        self.blocks = nn.ModuleList([
+            Block(
+                dim, num_heads, mlp_ratio=mlp_ratio, mlp_drop=mlp_drop,
+                checkpoint_grads=checkpoint_grads, attn_drop=attn_drop,
+                proj_drop=proj_drop
+            ) for _ in range(depth)
+        ])
+
+        # norm layer
+        self.out_norm = nn.LayerNorm(dim, eps=1e-6)
+
+        self.use_mask_token = use_mask_token
+        if self.use_mask_token:
+            self.mask_token = nn.Parameter(torch.randn(dim))
+
+        self.head = MLP2(
+            units=[hidden_dim, hidden_dim, 6],
+            act='relu',
+            out_act='sigmoid',
+            drop=0.
+        )
+
+    def init_pos_grid(self, axis_sizes):
+        self.num_patches = [s // p for s, p in zip(axis_sizes, self.patch_shape)]
+        for i, n in enumerate(self.num_patches): # axis values for each dim
+            self.register_buffer(f'grid_{i}', torch.arange(n)*(2*math.pi/n))
+
+    def pos_encoding(self): # TODO: Simplify for fixed dim=3
+        grids = [getattr(self, f'grid_{i}') for i in range(3)]
+        coords = torch.meshgrid(*grids, indexing='ij')
+
+        if self.learn_pos_encoding:
+            freqs = self.pos_encoding_freqs.exp().chunk(3)
+        else:
+            freqs = self.pos_encoding_freqs.chunk(3)
+
+        features = [
+            trig_fn(x.flatten()[:,None] * w[None, :])
+            for (x, w) in zip(coords, freqs) for trig_fn in (torch.sin, torch.cos)
+        ]
+        return torch.cat(features, dim=1)
+
+    def forward(self, x, mask=None):
+        """
+        Forward pass of ViT.
+        :param x   : tensor of spatial inputs with shape (batch_size, channels, *axis_sizes)
+        :param mask: a tensor of patch indices that should be masked out of `x`.
+        """
+
+        # patchify input
+        # x -> (batch_size, number_of_patches, voxels_per_patch)
+        x = self.to_patches(x)
+        
+        # embed
+        # x -> (batch_size, number_of_patches, embedding_dim)
+        x = self.embedding(x)
+
+        # apply mask and position encoding
+        if self.use_mask_token:
+            if mask is not None:
+                x = self.apply_mask_tokens(x, mask)
+            x = x + self.pos_encoding()
+        
+        # process patches with transformer blocks
+        for block in self.blocks:
+            x = block(x)
+        x = self.out_norm(x)
+
+        return x
+
+    def to_patches(self, x):
+        x = rearrange(
+            x, 'b c (x p1) (y p2) (z p3) -> b (x y z) (p1 p2 p3 c)',
+            **dict(zip(('p1', 'p2', 'p3'), self.patch_shape))
+        )
+        return x
+
+    def apply_mask_tokens(self, x, mask_idcs):
+        """
+        Replaces patch embeddings in `x` with the network's mask token at indices speficied by `mask`.
+
+        :param x   : input tensor with shape (B [batch size], T [number of patches], D [embed dim])
+        :param mask: tensor with shape (B, T) containing indices in the range [0,T)
+        """
+        B, T = x.shape[:2]
+        full_mask_token = repeat(self.mask_token, 'd -> b t d', b=B, t=T)
+        # construct boolean mask
+        mask = torch.zeros((B, T), device=x.device).scatter_(-1, mask_idcs, 1).bool()
+        return torch.where(mask[..., None], full_mask_token, x)          
+
+class Block(nn.Module):
+    def __init__(
+            self, hidden_size, num_heads, mlp_ratio=4.0, mlp_drop=0., checkpoint_grads=False,
+            **attn_kwargs
+        ):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.attn = Attention(hidden_size, num_heads=num_heads, qkv_bias=True, **attn_kwargs)
+        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
+        mlp_hidden_dim = int(hidden_size * mlp_ratio)
+        approx_gelu = lambda: nn.GELU(approximate="tanh")
+        self.mlp = Mlp(
+            in_features=hidden_size, hidden_features=mlp_hidden_dim, act_layer=approx_gelu,
+            drop=mlp_drop
+        )
+        self.checkpoint_grads = checkpoint_grads
+
+    def forward(self, x):
+        if self.checkpoint_grads:
+            x = x + checkpoint(self.attn, self.norm1(x), use_reentrant=False)
+        else:
+            x = x + self.attn(self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+        return x
+
+class Mlp(nn.Module):
+    """ MLP as used in Vision Transformer, MLP-Mixer and related networks
+    """
+    def __init__(
+            self,
+            in_features,
+            hidden_features=None,
+            out_features=None,
+            act_layer=nn.GELU,
+            norm_layer=None,
+            bias=True,
+            drop=0.,
+            use_conv=False,
+    ):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        linear_layer = partial(nn.Conv2d, kernel_size=1) if use_conv else nn.Linear
+
+        self.fc1 = linear_layer(in_features, hidden_features, bias=bias)
+        self.act = act_layer()
+        self.drop1 = nn.Dropout(drop)
+        self.norm = norm_layer(hidden_features) if norm_layer is not None else nn.Identity()
+        self.fc2 = linear_layer(hidden_features, out_features, bias=bias)
+        self.drop2 = nn.Dropout(drop)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.act(x)
+        x = self.drop1(x)
+        x = self.norm(x)
+        x = self.fc2(x)
+        x = self.drop2(x)
+        return x
+    
+class MLP2(nn.Module):
+
+    def __init__(
+        self,
+        units,
+        act,
+        out_act,
+        drop
+    ):
+
+        # units, act, drop=None
+
+        super(MLP2, self).__init__()
+
+        self.linear_layers = nn.ModuleList([nn.Linear(a, b) for a, b in pairwise(units)])
+        self.act = getattr(F, act)
+        self.out_act = getattr(F, out_act) if out_act else None
+        self.drop = nn.Dropout(drop) if drop else None
+
+    def forward(self, x):
+        
+        for linear in self.linear_layers[:-1]:
+            
+            x = linear(x)
+            x = self.act(x)
+            if self.drop is not None:
+                x = self.drop(x)
+        
+        x = self.linear_layers[-1](x)
+        if self.out_act is not None:
+            x = self.out_act(x)        
+        
+        return x
+    
+class Attention(nn.Module):
+
+    def __init__(
+            self,
+            dim: int,
+            num_heads: int = 8,
+            qkv_bias: bool = False,
+            qk_norm: bool = False,
+            attn_drop: float = 0.,
+            proj_drop: float = 0.,
+            norm_layer: nn.Module = nn.LayerNorm,
+    ) -> None:
+        super().__init__()
+        assert dim % num_heads == 0, 'dim should be divisible by num_heads'
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+        self.scale = self.head_dim ** -0.5
+
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)
+        q, k = self.q_norm(q), self.k_norm(k)
+
+        x = F.scaled_dot_product_attention(
+            q, k, v,
+            dropout_p=self.attn_drop.p if self.training else 0.,
+        )
+
+        x = x.transpose(1, 2).reshape(B, N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
+class PretrainedViT(ViT):
+    """
+    A class for initializing pretrained ViTs.
+    """
+
+    def __init__(
+        self,
+        backbone_dir = "runs/pretraining_micro/huge_775",
+        drop_head = True,
+        frozen = True,
+        # add_head = False,
+        # head_args = {
+        #     '_target_': 'src.networks.MLP',
+        #     'cfg': {
+        #         'units': [
+        #           144,
+        #           144,
+        #           6],
+        #         'act': 'relu',
+        #         'out_act': 'sigmoid',
+        #         'drop': 0.}
+        # },
+        # adapt_res = False,
+        # adapt_args = {
+        #       'channels': 4,
+        #       'downsample_factor': 5,
+        #       'extra_proj': True,
+        #       'replace_embedding': False
+        # },
+        # use_input_conv = False,
+        # input_conv_args = {
+        #     'channels': 8,
+        #     'kernel1': [4,4,5],
+        #     'stride1': [2,2,3],
+        #     'kernel2': [3, 3, 4],
+        #     'stride2': [2, 2, 3],
+        #     'conv_out_dim': 640
+        # },
+        # interp_pos_encoding = False
+    ):
+
+        # read backbone config
+        bb_dir = backbone_dir
+        # bcfg = get_prev_config(bb_dir)
+
+        # load backbone state
+        if bb_dir:
+            model_state = torch.load(os.path.join(bb_dir, 'model.pt'))["model"]
+            net_state = {
+                k.replace('net.', ''): v for k,v in model_state.items() if k.startswith('net.')
+            }
+        
+        # initialize network and load weights
+        super().__init__()
+        if bb_dir:
+            self.load_state_dict(net_state)
+        
+        # delete the head module used in pretraining
+        if drop_head and hasattr(self, 'head'):
+            del self.head
+
+        # freeze weights and set to eval mode
+        if frozen:
+            for p in self.parameters():
+                p.requires_grad = False
+            self.eval()
+            
+        # init new head or input adaption if needed
+        # if add_head:
+        #     self.head = instantiate(cfg.head)
+        # if adapt_res:
+        #     init_adaptor(cfg.adaptor)
+        # if use_input_conv:
+        #     init_input_conv(cfg.input_conv)            
+        # if interp_pos_encoding:
+        #     bb.init_pos_grid(cfg.data_shape)              
+
+class LLMViTImageEmbedding(nn.Module):
 
     def __init__(self, config: PretrainedConfig, wte=None, **kwargs) -> None:
         super().__init__()
@@ -133,56 +466,19 @@ class Phi3ImageEmbedding(nn.Module):
 
         self.wte = wte
 
-        if isinstance(config.img_processor, dict) and config.img_processor.get('name', None) == 'clip_vision_model':
-            assert 'model_name' in config.img_processor, 'model_name must be provided for CLIPVisionModel'
-            assert 'image_dim_out' in config.img_processor, 'image_dim_out must be provided for CLIPVisionModel'
-            assert 'num_img_tokens' in config.img_processor, 'num_img_tokens must be provided for CLIPVisionModel'
-            assert config.img_processor['model_name'] == 'openai/clip-vit-large-patch14-336'
-            clip_config = CLIP_VIT_LARGE_PATCH14_336_CONFIG
-            self.img_processor = CLIPVisionModel(clip_config)
+        if isinstance(config.img_processor, dict) and config.img_processor.get('name', None) == 'vit_skatr':
+            self.img_processor = ViT()
             image_dim_out = config.img_processor['image_dim_out']
-            self.num_img_tokens = config.img_processor['num_img_tokens']
-
-            # FA2 in CLIP
-            if config._attn_implementation == 'flash_attention_2':
-                for layer in self.img_processor.vision_model.encoder.layers:
-                    clip_fa2 = CLIPAttentionFA2(clip_config)
-                    del layer.self_attn
-                    layer.self_attn = clip_fa2
-        elif isinstance(config.img_processor, dict) and config.img_processor.get('name', None) == 'vit':
-            self.img_processor = PretrainedViT(backbone_dir=config.img_processor['backbone_dir'])
-            image_dim_out = config.img_processor['image_dim_out']
-            self.num_img_tokens = config.img_processor['num_img_tokens']
+            self.patch_size = config.img_processor['patch_size']
         else:
             raise NotImplementedError(f'img_processor = {config.img_processor}, not implemented')
 
         self.image_dim_out = image_dim_out
         self.img_sizes = None
 
-        # global_gn and sub_gn for hd transform, serves as line separator
-        self.use_hd_transform = kwargs.get('use_hd_transform', False)
-        self.with_learnable_separator = kwargs.get('with_learnable_separator', False)
-        self.hd_transform_order = kwargs.get('hd_transform_order', 'glb_sub')
-        # with_hd_transform and with_learnable_separator should have same value
-        assert self.use_hd_transform == self.with_learnable_separator, 'use_hd_transform and with_learnable_separator should have same value'
-        if self.with_learnable_separator:
-            assert self.use_hd_transform, 'learnable separator is only for hd transform'
-            # 1024 * 4, merge spatial to channel dimension
-            self.glb_GN = nn.Parameter(torch.zeros([1, 1, self.image_dim_out * 4]))
-            self.sub_GN = nn.Parameter(torch.zeros([1, 1, 1, self.image_dim_out * 4]))
-            logger.info(f'learnable separator enabled for hd transform, hd_transform_order = {self.hd_transform_order}')
-
         projection_cls = kwargs.get('projection_cls', 'linear')
         if projection_cls == 'linear':
             self.img_projection = nn.Linear(image_dim_out, hidden_size)
-        elif projection_cls == 'mlp' and self.use_hd_transform:
-            dim_projection = hidden_size
-            depth = 2
-            layers = [nn.Linear(image_dim_out * 4, dim_projection)]
-            for _ in range(1, depth):
-                layers.extend([nn.GELU(),
-                                nn.Linear(dim_projection, dim_projection)])
-            self.img_projection = nn.Sequential(*layers)
         elif projection_cls == 'mlp':
             dim_projection = hidden_size
             depth = 2
@@ -198,12 +494,23 @@ class Phi3ImageEmbedding(nn.Module):
         self.img_features = None
 
         if isinstance(config.img_processor, dict):
-            self.layer_idx = config.img_processor.get('layer_idx', -2)
             self.type_feature = config.img_processor.get('type_feature', 'patch')
         else:
-            self.layer_idx = -2
             self.type_feature = 'patch'
 
+    def load_vit_weights(self, backbone_dir):
+        model_state = torch.load(os.path.join(backbone_dir, 'model.pt'))["model"]
+        net_state = {
+            k.replace('net.', ''): v for k,v in model_state.items() if k.startswith('net.')
+        }
+        self.img_processor.load_state_dict(net_state)
+        if hasattr(self.img_processor, 'head'):
+            del self.img_processor.head
+
+        # freeze weights and set to eval mode
+        for p in self.img_processor.parameters():
+            p.requires_grad = False
+        self.img_processor.eval()
 
     def set_img_features(self, img_features: torch.FloatTensor) -> None:
         self.img_features = img_features
@@ -212,15 +519,8 @@ class Phi3ImageEmbedding(nn.Module):
         self.img_sizes = img_sizes
 
     def get_img_features(self, img_embeds: torch.FloatTensor) -> torch.FloatTensor:
-        LAYER_IDX = self.layer_idx
-        TYPE_FEATURE = self.type_feature
-
-        img_processor_output = self.img_processor(img_embeds, output_hidden_states=True)
-        img_feature = img_processor_output.hidden_states[LAYER_IDX]
-
-        if TYPE_FEATURE == "patch":
-            patch_feature = img_feature[:, 1:]
-            return patch_feature
+        img_feature = self.img_processor(img_embeds)
+        return img_feature
 
         raise NotImplementedError
 
@@ -237,13 +537,12 @@ class Phi3ImageEmbedding(nn.Module):
         hidden_states = self.wte(input_ids)
 
         if has_image:
-            assert self.use_hd_transform
-            num_images, num_crops, c, h, w = pixel_values.shape
-            assert c == 3 and h == w == 336
-            img_features = self.get_img_features(pixel_values.flatten(0, 1)).reshape(
-                num_images, num_crops, -1, self.image_dim_out
+            num_images, c, h, w, d = pixel_values.shape
+            # assert h == self.patch_size[0] and w == self.patch_size[1] and d == self.patch_size[2]
+            img_features = self.get_img_features(pixel_values).reshape(
+                num_images, -1, self.image_dim_out
             )
-            image_features_proj = self.hd_feature_transform(img_features, image_sizes)
+            image_features_proj = self.img_projection(img_features)
             hidden_states = hidden_states.index_put(
                 positions, image_features_proj, accumulate=False
             )
@@ -253,128 +552,8 @@ class Phi3ImageEmbedding(nn.Module):
 
         return hidden_states
 
-    def hd_feature_transform(self, image_features, image_sizes):
-        """
-        image_features: (num_images, num_crops+1, 24*24, 1024)
-        """
-        assert (
-            self.hd_transform_order == 'sub_glb'
-        ), f'hd_transform_order `{self.hd_transform_order}` not implemented'
-        if isinstance(self.img_projection, nn.Sequential):
-            target_device = self.img_projection[0].bias.device
-            target_dtype = self.img_projection[0].bias.dtype
-        else:  # It's a single nn.Linear layer
-            target_device = self.img_projection.bias.device
-            target_dtype = self.img_projection.bias.dtype
-
-        global_image_features = image_features[:, 0]  # (num_images, 24*24, 1024)
-        # global feature can be viewed as a special HD case with num_crops 1x1
-        global_image_features_hd = self.reshape_hd_patches_2x2merge(global_image_features, 1, 1)
-        global_image_features_hd_newline = self.add_image_newline(global_image_features_hd)
-
-        all_image_embeddings = []
-        # need a for loop to process each image because of different image sizes
-        # (patch arrangement is different for each image)
-        for i, img_size in enumerate(image_sizes):
-            h, w = img_size
-            h_crop = h // 336
-            w_crop = w // 336
-            num_crops = h_crop * w_crop
-
-            # NOTE: real num_crops is padded
-            # (num_crops, 24*24, 1024)
-            sub_image_features = image_features[i, 1 : 1 + num_crops]
-            sub_image_features_hd = self.reshape_hd_patches_2x2merge(
-                sub_image_features, h_crop, w_crop
-            )
-            sub_image_features_hd_newline = self.add_image_newline(sub_image_features_hd)
-
-            # [sub features, separator, global features]
-            all_image_embeddings.extend(
-                [
-                    sub_image_features_hd_newline.squeeze(0),  # (h_crop*12*(w_crop*12+1), 4096)
-                    self.glb_GN.squeeze(0),
-                    global_image_features_hd_newline[i],
-                ]
-            )
-
-        image_features_proj = self.img_projection(
-            torch.cat(all_image_embeddings, dim=0).to(target_device).to(target_dtype)
-        )
-
-        return image_features_proj
-
-    def reshape_hd_patches_2x2merge(self, image_features, h_crop, w_crop):
-        """
-        image_features: (num_images*num_crops, 24*24, 1024)
-        output: (num_images, h_crop*12, w_crop*12, 4096), h_crop*w_crop == num_crops
-        """
-        N, L, C = image_features.shape
-        assert L == 24 * 24 and C == 1024 and N % (h_crop * w_crop) == 0
-        num_images = N // (h_crop * w_crop)
-        H = int(L**0.5)
-        image_features_hd = (
-            image_features.reshape(N, H, H, C)  # N, 24, 24, 1024
-            .reshape(N, H // 2, 2, H // 2, 2, C)  # N, 12, 2, 12, 2, 1024
-            .permute(0, 1, 3, 2, 4, 5)  # N, 12, 12, 2, 2, 1024
-            .reshape(N, -1, 4 * C)  # N, 144, 4096
-            .reshape(
-                num_images, h_crop, w_crop, H // 2, H // 2, -1
-            )  # n_img, h_crop, w_crop, 12, 12, 4096
-            .permute(0, 1, 3, 2, 4, 5)  # n_img, h_crop, 12, w_crop, 12, 4096
-            .reshape(
-                num_images, h_crop * H // 2, w_crop * H // 2, 4 * C
-            )  # n_img, h_crop*12, w_crop*12, 4096
-        )
-
-        # alternative implementation using einops
-        # from einops import rearrange
-        # image_features_nhwc = rearrange(
-        #     image_features,
-        #     'N (H W) c -> N H W c',
-        #     H=H,
-        #     W=H,
-        # )
-        # image_features_2x2merge = rearrange(
-        #     image_features_nhwc,
-        #     'N (h h_pool) (w w_pool) c -> N h w (h_pool w_pool c)',
-        #     h_pool=2,
-        #     w_pool=2,
-        # )
-        # image_features_hd = rearrange(
-        #     image_features_2x2merge,
-        #     '(n_img h_crop w_crop) h w C -> n_img (h_crop h) (w_crop w) C',
-        #     h_crop=h_crop,
-        #     w_crop=w_crop,
-        # )
-
-        return image_features_hd
-
-    def add_image_newline(self, image_features_hd):
-        """
-        image_features_hd: (num_images, h_crop*12, w_crop*12, 4096)
-        output: (num_images, (h_crop*12) * (w_crop*12+1), 4096)
-        """
-        num_images, h, w, hid_dim = image_features_hd.shape
-        # add the newline token to the HD image feature patches
-        newline_embeddings = self.sub_GN.expand(num_images, h, -1, -1)  # (n_img, h, 1, hid_dim)
-        image_features_hd_newline = torch.cat(
-            [image_features_hd, newline_embeddings], dim=2
-        ).reshape(num_images, -1, hid_dim)
-        return image_features_hd_newline
-
 logger = logging.get_logger(__name__)
 
-_CHECKPOINT_FOR_DOC = "microsoft/Phi-3-vision-128k-instruct"
-_CONFIG_FOR_DOC = "Phi3VConfig"
-
-PHI3V_PRETRAINED_MODEL_ARCHIVE_LIST = [
-    "microsoft/Phi-3-vision-128k-instruct",
-    # See all Phi-3 models at https://huggingface.co/models?filter=Phi-3
-]
-
-
-# Copied from transformers.models.llama.modeling_llama.LlamaRMSNorm with Llama->Phi3
 class Phi3RMSNorm(nn.Module):
     def __init__(self, hidden_size, eps=1e-6):
         """
@@ -391,8 +570,6 @@ class Phi3RMSNorm(nn.Module):
         hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
         return self.weight * hidden_states.to(input_dtype)
 
-
-# Copied from transformers.models.llama.modeling_llama._get_unpad_data
 def _get_unpad_data(attention_mask):
     seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
     indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
@@ -404,8 +581,6 @@ def _get_unpad_data(attention_mask):
         max_seqlen_in_batch,
     )
 
-
-# Copied from transformers.models.gemma.modeling_gemma.GemmaRotaryEmbedding with gemma->phi3, Gemma->Phi3
 class Phi3RotaryEmbedding(nn.Module):
     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
         super().__init__()
@@ -434,7 +609,6 @@ class Phi3RotaryEmbedding(nn.Module):
             cos = emb.cos()
             sin = emb.sin()
         return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
-
 
 class Phi3SuScaledRotaryEmbedding(Phi3RotaryEmbedding):
     def __init__(self, dim, config, device=None):
@@ -476,7 +650,6 @@ class Phi3SuScaledRotaryEmbedding(Phi3RotaryEmbedding):
             sin = emb.sin() * scaling_factor
         return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
 
-
 class Phi3YarnScaledRotaryEmbedding(Phi3RotaryEmbedding):
     def __init__(self, dim, config, device=None):
         super().__init__(dim, config.max_position_embeddings, config.rope_theta, device)
@@ -517,16 +690,12 @@ class Phi3YarnScaledRotaryEmbedding(Phi3RotaryEmbedding):
             sin = emb.sin() * scaling_factor
         return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
 
-
-# Copied from transformers.models.llama.modeling_llama.rotate_half
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
     x1 = x[..., : x.shape[-1] // 2]
     x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
 
-
-# Copied from transformers.models.llama.modeling_llama.apply_rotary_pos_emb
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors.
 
@@ -552,7 +721,6 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
-
 
 class Phi3MLP(nn.Module):
     def __init__(self, config):
@@ -589,7 +757,7 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
 class Phi3Attention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper"""
 
-    def __init__(self, config: Phi3VConfig, layer_idx: Optional[int] = None):
+    def __init__(self, config: LLMViTConfig, layer_idx: Optional[int] = None):
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
@@ -1129,7 +1297,7 @@ PHI3_ATTENTION_CLASSES = {
 
 
 class Phi3DecoderLayer(nn.Module):
-    def __init__(self, config: Phi3VConfig, layer_idx: int):
+    def __init__(self, config: LLMViTConfig, layer_idx: int):
         super().__init__()
 
         self.config = config
@@ -1227,8 +1395,8 @@ PHI3V_START_DOCSTRING = r"""
     "The bare Phi-3-V model outputting raw hidden-states without any specific head on top.",
     PHI3V_START_DOCSTRING,
 )
-class Phi3VPreTrainedModel(PreTrainedModel):
-    config_class = Phi3VConfig
+class LLMViTPreTrainedModel(PreTrainedModel):
+    config_class = LLMViTConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
     _no_split_modules = ["Phi3DecoderLayer"]
@@ -1330,15 +1498,8 @@ PHI3V_INPUTS_DOCSTRING = r"""
     "The bare Phi-3-V model outputting raw hidden-states without any specific head on top.",
     PHI3V_START_DOCSTRING,
 )
-class Phi3VModel(Phi3VPreTrainedModel):
-    """
-    Transformer decoder consisting of *config.num_hidden_layers* layers. Each layer is a [`Phi3DecoderLayer`]
-
-    Args:
-        config: Phi3Config
-    """
-
-    def __init__(self, config: Phi3VConfig):
+class LLMViTModel(LLMViTPreTrainedModel):
+    def __init__(self, config: LLMViTConfig):
         super().__init__(config)
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
@@ -1353,9 +1514,8 @@ class Phi3VModel(Phi3VPreTrainedModel):
                 'embedding_cls': config.embd_layer['embedding_cls'],
                 **config.embd_layer
             }
-            self.vision_embed_tokens = Phi3ImageEmbedding(config, wte=self.embed_tokens, **embedding_config)
-            # # set wte the same for vision embedding
-            # self.vision_embed_tokens.wte.weight = self.embed_tokens.weight
+            if isinstance(config.img_processor, dict) and config.img_processor.get('name', None) == 'vit_skatr':
+                self.vision_embed_tokens = LLMViTImageEmbedding(config, wte=self.embed_tokens, **embedding_config)
 
         self.layers = nn.ModuleList(
             [Phi3DecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
@@ -1526,54 +1686,47 @@ class Phi3VModel(Phi3VPreTrainedModel):
                 'embedding_cls': self.config.embd_layer['embedding_cls'],
                 **self.config.embd_layer
             }
-        self.vision_embed_tokens = Phi3ImageEmbeddingSkatr(
+        self.vision_embed_tokens = LLMViTImageEmbedding(
             self.config,
             wte=self.embed_tokens,
             pretrained_backbone_dir=pretrained_backbone_dir,
             **embedding_config
             )
 
+    def load_vit_weights(self, backbone_dir):
+        if isinstance(self.config.img_processor, dict) and self.config.img_processor.get('name', None) == 'vit_skatr':
+            self.vision_embed_tokens.load_vit_weights(backbone_dir)
 
-class Phi3VForCausalLM(Phi3VPreTrainedModel):
+class LLMViTForCausalLM(LLMViTPreTrainedModel):
     _tied_weights_keys = ["lm_head.weight"]
 
-    # Copied from transformers.models.llama.modeling_llama.LlamaForCausalLM.__init__ with Llama->Phi3
     def __init__(self, config):
         super().__init__(config)
-        self.model = Phi3VModel(config)
+        self.model = LLMViTModel(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         # Initialize weights and apply final processing
         self.post_init()
 
-    # Copied from transformers.models.llama.modeling_llama.LlamaForCausalLM.get_input_embeddings
     def get_input_embeddings(self):
         return self.model.embed_tokens
 
-    # Copied from transformers.models.llama.modeling_llama.LlamaForCausalLM.set_input_embeddings
     def set_input_embeddings(self, value):
         self.model.embed_tokens = value
 
-    # Copied from transformers.models.llama.modeling_llama.LlamaForCausalLM.get_output_embeddings
     def get_output_embeddings(self):
         return self.lm_head
 
-    # Copied from transformers.models.llama.modeling_llama.LlamaForCausalLM.set_output_embeddings
     def set_output_embeddings(self, new_embeddings):
         self.lm_head = new_embeddings
 
-    # Copied from transformers.models.llama.modeling_llama.LlamaForCausalLM.set_decoder
     def set_decoder(self, decoder):
         self.model = decoder
 
-    # Copied from transformers.models.llama.modeling_llama.LlamaForCausalLM.get_decoder
     def get_decoder(self):
         return self.model
 
-    # Ignore copy
-    @add_start_docstrings_to_model_forward(PHI3V_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=CausalLMOutputWithPast, config_class=_CONFIG_FOR_DOC)
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -1589,32 +1742,7 @@ class Phi3VForCausalLM(Phi3VPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-        r"""
-        Args:
-            labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-                Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
-                config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
-                (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
-
-        Returns:
-
-        Example:
-
-        ```python
-        >>> from transformers import AutoTokenizer, Phi3ForCausalLM
-
-        >>> model = Phi3ForCausalLM.from_pretrained("microsoft/phi-3-mini-4k-instruct")
-        >>> tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-3-mini-4k-instruct")
-
-        >>> prompt = "This is an example script ."
-        >>> inputs = tokenizer(prompt, return_tensors="pt")
-
-        >>> # Generate
-        >>> generate_ids = model.generate(inputs.input_ids, max_length=30)
-        >>> tokenizer.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-        'This is an example script .\n Certainly! Below is a sample script that demonstrates a simple task, such as calculating the sum'
-        ```"""
-
+        
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -1741,224 +1869,5 @@ class Phi3VForCausalLM(Phi3VPreTrainedModel):
             )
         return reordered_past
 
-
-@add_start_docstrings(
-    """
-    The [`Phi3VModel`] with a sequence classification head on top (linear layer).
-
-    [`Phi3VForSequenceClassification`] uses the last token in order to do the classification, as other causal models
-    (e.g. GPT-2) do.
-
-    Since it does classification on the last token, it requires to know the position of the last token. If a
-    `pad_token_id` is defined in the configuration, it finds the last token that is not a padding token in each row. If
-    no `pad_token_id` is defined, it simply takes the last value in each row of the batch. Since it cannot guess the
-    padding tokens when `inputs_embeds` are passed instead of `input_ids`, it does the same (take the last value in
-    each row of the batch).
-    """,
-    PHI3V_START_DOCSTRING,
-)
-# Copied from transformers.models.llama.modeling_llama.LlamaForSequenceClassification with Llama->Phi3, LLAMA->PHI3, self.transformer->self.model, transformer_outputs->model_outputs
-class Phi3VForSequenceClassification(Phi3VPreTrainedModel):
-    def __init__(self, config):
-        super().__init__(config)
-        self.num_labels = config.num_labels
-        self.model = Phi3VModel(config)
-        self.score = nn.Linear(config.hidden_size, self.num_labels, bias=False)
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    def get_input_embeddings(self):
-        return self.model.embed_tokens
-
-    def set_input_embeddings(self, value):
-        self.model.embed_tokens = value
-
-    @add_start_docstrings_to_model_forward(PHI3V_INPUTS_DOCSTRING)
-    def forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Union[Cache, List[torch.FloatTensor]]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        pixel_values: Optional[torch.FloatTensor] = None,
-        image_sizes: Optional[torch.LongTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ) -> Union[Tuple, SequenceClassifierOutputWithPast]:
-        r"""
-        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
-            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
-            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
-        """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        model_outputs = self.model(
-            input_ids,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
-            pixel_values=pixel_values,
-            image_sizes=image_sizes,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-        hidden_states = model_outputs[0]
-        logits = self.score(hidden_states)
-
-        if input_ids is not None:
-            batch_size = input_ids.shape[0]
-        else:
-            batch_size = inputs_embeds.shape[0]
-
-        if self.config.pad_token_id is None and batch_size != 1:
-            raise ValueError("Cannot handle batch sizes > 1 if no padding token is defined.")
-        if self.config.pad_token_id is None:
-            sequence_lengths = -1
-        else:
-            if input_ids is not None:
-                # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
-                sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
-                sequence_lengths = sequence_lengths % input_ids.shape[-1]
-                sequence_lengths = sequence_lengths.to(logits.device)
-            else:
-                sequence_lengths = -1
-
-        pooled_logits = logits[torch.arange(batch_size, device=logits.device), sequence_lengths]
-
-        loss = None
-        if labels is not None:
-            labels = labels.to(logits.device)
-            if self.config.problem_type is None:
-                if self.num_labels == 1:
-                    self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
-                    self.config.problem_type = "single_label_classification"
-                else:
-                    self.config.problem_type = "multi_label_classification"
-
-            if self.config.problem_type == "regression":
-                loss_fct = MSELoss()
-                if self.num_labels == 1:
-                    loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
-                else:
-                    loss = loss_fct(pooled_logits, labels)
-            elif self.config.problem_type == "single_label_classification":
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
-            elif self.config.problem_type == "multi_label_classification":
-                loss_fct = BCEWithLogitsLoss()
-                loss = loss_fct(pooled_logits, labels)
-        if not return_dict:
-            output = (pooled_logits,) + model_outputs[1:]
-            return ((loss,) + output) if loss is not None else output
-
-        return SequenceClassifierOutputWithPast(
-            loss=loss,
-            logits=pooled_logits,
-            past_key_values=model_outputs.past_key_values,
-            hidden_states=model_outputs.hidden_states,
-            attentions=model_outputs.attentions,
-        )
-
-
-@add_start_docstrings(
-    """
-    [`Phi3VModel`] with a token classification head on top (a linear layer on top of the hidden-states output) e.g. for
-    Named-Entity-Recognition (NER) tasks.
-    """,
-    PHI3V_START_DOCSTRING,
-)
-# Copied from transformers.models.mpt.modeling_mpt.MptForTokenClassification with Mpt->Phi3,MPT->PHI3,self.transformer->self.model,transformer_outputs->model_outputs
-class Phi3VForTokenClassification(Phi3VPreTrainedModel):
-    def __init__(self, config: Phi3VConfig):
-        super().__init__(config)
-        self.num_labels = config.num_labels
-
-        self.model = Phi3VModel(config)
-        if hasattr(config, "classifier_dropout") and config.classifier_dropout is not None:
-            classifier_dropout = config.classifier_dropout
-        elif hasattr(config, "hidden_dropout") and config.hidden_dropout is not None:
-            classifier_dropout = config.hidden_dropout
-        else:
-            classifier_dropout = 0.1
-        self.dropout = nn.Dropout(classifier_dropout)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    @add_start_docstrings_to_model_forward(PHI3V_INPUTS_DOCSTRING)
-    @add_code_sample_docstrings(
-        checkpoint=_CHECKPOINT_FOR_DOC,
-        output_type=TokenClassifierOutput,
-        config_class=_CONFIG_FOR_DOC,
-    )
-    def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], ...]] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        pixel_values: Optional[torch.FloatTensor] = None,
-        image_sizes: Optional[torch.LongTensor] = None,
-        labels: Optional[torch.Tensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        **deprecated_arguments,
-    ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
-        r"""
-        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
-            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
-            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
-        """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        model_outputs = self.model(
-            input_ids,
-            past_key_values=past_key_values,
-            attention_mask=attention_mask,
-            inputs_embeds=inputs_embeds,
-            pixel_values=pixel_values,
-            image_sizes=image_sizes,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-
-        hidden_states = model_outputs[0]
-        hidden_states = self.dropout(hidden_states)
-        logits = self.classifier(hidden_states)
-
-        loss = None
-        if labels is not None:
-            # move labels to correct device to enable model parallelism
-            labels = labels.to(logits.device)
-            batch_size, seq_length = labels.shape
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(
-                logits.view(batch_size * seq_length, self.num_labels), labels.view(batch_size * seq_length)
-            )
-
-        if not return_dict:
-            output = (logits,) + model_outputs[2:]
-            return ((loss,) + output) if loss is not None else output
-
-        return TokenClassifierOutput(
-            loss=loss,
-            logits=logits,
-            hidden_states=model_outputs.hidden_states,
-            attentions=model_outputs.attentions,
-        )
+    def load_vit_weights(self, backbone_dir):
+        self.model.load_vit_weights(backbone_dir)

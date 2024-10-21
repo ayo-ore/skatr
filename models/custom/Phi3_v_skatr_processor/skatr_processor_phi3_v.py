@@ -159,7 +159,7 @@ class Phi3VImageProcessorSkatr(BaseImageProcessor):
 
     def __init__(
         self,
-        patch_size,
+        patch_size=None,
         light_cone_dims=3,
         image_mean: Optional[Union[float, List[float]]] = None,
         image_std: Optional[Union[float, List[float]]] = None,
@@ -168,7 +168,6 @@ class Phi3VImageProcessorSkatr(BaseImageProcessor):
         super().__init__(**kwargs)
         self.patch_size = patch_size
         self.light_cone_dims = light_cone_dims
-        assert len(patch_size) == light_cone_dims
 
         self.image_mean = image_mean # if image_mean is not None else OPENAI_CLIP_MEAN
         self.image_std = image_std # if image_std is not None else OPENAI_CLIP_STD
@@ -183,6 +182,9 @@ class Phi3VImageProcessorSkatr(BaseImageProcessor):
                 Image to preprocess. Expects a single or batch of images with pixel values ranging from 0 to 255. If
                 passing in images with pixel values between 0 and 1, set `do_rescale=False`.
         """
+
+        assert self.patch_size != None
+
         images = make_list_of_images(images, expected_ndims=self.light_cone_dims)
 
         if is_numpy_array(images[0]):
@@ -192,8 +194,8 @@ class Phi3VImageProcessorSkatr(BaseImageProcessor):
                 "Invalid image type. Must be of type numpy.ndarray or torch.Tensor."
             )
         
-        shapes = [[im.size[i] for i in range(im.dim())] for im in images]
-        num_img_tokens = [ np.prod([ shape_size // patch_size for patch_size, shape_size in zip(self.patch_sizes, shape)]) for shape in shapes]
+        shapes = [[im.size()[i] for i in range(im.dim())] for im in images]
+        num_img_tokens = [ np.prod([ shape_size // dim_patch_size for dim_patch_size, shape_size in zip(self.patch_size, shape)]) for shape in shapes]
         return num_img_tokens
 
     def calc_num_image_tokens_from_image_size(self, shape):
@@ -203,7 +205,10 @@ class Phi3VImageProcessorSkatr(BaseImageProcessor):
             width (`int`): Width of the image.
             height (`int`): Height of the image.
         """
-        num_img_tokens = np.prod([ shape_size // patch_size for patch_size, shape_size in zip(self.patch_sizes, shape)]) 
+
+        assert self.patch_size != None
+
+        num_img_tokens = np.prod([ shape_size // dim_patch_size for dim_patch_size, shape_size in zip(self.patch_size, shape)]) 
         return num_img_tokens
 
     def preprocess(
@@ -233,6 +238,9 @@ class Phi3VImageProcessorSkatr(BaseImageProcessor):
                 - `TensorType.NUMPY` or `'np'`: Return a batch of type `np.ndarray`.
                 - `TensorType.JAX` or `'jax'`: Return a batch of type `jax.numpy.ndarray`.
         """
+
+        assert self.patch_size != None
+
         image_mean = image_mean if image_mean is not None else self.image_mean
         image_std = image_std if image_std is not None else self.image_std
 
@@ -244,19 +252,25 @@ class Phi3VImageProcessorSkatr(BaseImageProcessor):
         #     raise ValueError(
         #         "Invalid image type. Must be of type numpy.ndarray or torch.Tensor."
         #     )
-        if not is_numpy_array(images[0]) and not is_torch_tensor(images[0]):
+        if is_numpy_array(images[0]):
+            images = [torch.from_numpy(im).unsqueeze(-4) for im in images]
+        elif is_torch_tensor(images[0]):
+            images = [im.unsqueeze(-4) for im in images]
+        else:
             raise ValueError(
                 "Invalid image type. Must be of type numpy.ndarray or torch.Tensor."
             )
 
-        transf = [torchvision.transforms.ToTensor()]
-        if image_mean != None and image_std != None:
-            transf += torchvision.transforms.Normalize(image_mean, image_std)
-        img_processor = torchvision.transforms.Compose(transf)
+        # transf = [torchvision.transforms.ToTensor()]
+        # if image_mean != None and image_std != None:
+        #     transf += torchvision.transforms.Normalize(image_mean, image_std)
+        # img_processor = torchvision.transforms.Compose(transf)
 
-        images = [img_processor(im) for im in images]
-        shapes = [[im.size[i] for i in range(im.dim())] for im in images]
-        num_img_tokens = [ np.prod([ shape_size // patch_size for patch_size, shape_size in zip(self.patch_sizes, shape)]) for shape in shapes]
+        shapes = [[im.size()[i] for i in range(0, im.dim())] for im in images] # torch enumerates dims inversely
+        # image_sizes = [torch.LongTensor(_shape) for _shape in shapes]
+        num_img_tokens = [ int(np.prod([ shape_size // dim_patch_size for dim_patch_size, shape_size in zip(self.patch_size, shape[1:])])) for shape in shapes]
+
+        images = torch.stack(images, dim=0)
 
         data = {"pixel_values": images, 
                 "image_sizes": shapes,
@@ -287,12 +301,15 @@ class Phi3VProcessorSkatr(ProcessorMixin):
     image_processor_class = "Phi3VImageProcessorSkatr"
     tokenizer_class = ("LlamaTokenizer", "LlamaTokenizerFast")
     special_image_token = "<|lightcone|>"
+    lightcone_param_token = "<|placeholder1|>"
 
     def __init__(self, image_processor, tokenizer):
+        # super().__init__()
+
         self.image_processor = image_processor
         self.tokenizer = tokenizer
-        self.num_img_tokens = image_processor.num_img_tokens
         self.img_tokens = [f"<|lightcone_{i+1}|>" for i in range(1000000)]
+        self.chat_template = None
 
     def __call__(
         self,
@@ -378,6 +395,12 @@ class Phi3VProcessorSkatr(ProcessorMixin):
     @property 
     def special_image_token_id(self):
         return self.tokenizer.convert_tokens_to_ids(self.special_image_token)
+
+    def get_lightcone_param_token(self):
+        return self.lightcone_param_token
+    
+    def lightcone_param_token_id(self):
+        return self.tokenizer.convert_tokens_to_ids(self.lightcone_param_token)
 
     def get_special_image_token_id(self):
         return self.tokenizer.convert_tokens_to_ids(self.special_image_token)

@@ -329,14 +329,16 @@ class PretrainedViT(ViT):
         # bcfg = get_prev_config(bb_dir)
 
         # load backbone state
-        model_state = torch.load(os.path.join(bb_dir, 'model.pt'))["model"]
-        net_state = {
-            k.replace('net.', ''): v for k,v in model_state.items() if k.startswith('net.')
-        }
+        if bb_dir:
+            model_state = torch.load(os.path.join(bb_dir, 'model.pt'))["model"]
+            net_state = {
+                k.replace('net.', ''): v for k,v in model_state.items() if k.startswith('net.')
+            }
         
         # initialize network and load weights
         super().__init__()
-        self.load_state_dict(net_state)
+        if bb_dir:
+            self.load_state_dict(net_state)
         
         # delete the head module used in pretraining
         if drop_head and hasattr(self, 'head'):
@@ -374,11 +376,10 @@ class Phi3ImageEmbeddingSkatr(nn.Module):
 
         self.wte = wte
 
-        if isinstance(config.img_processor, dict) and config.img_processor.get('name', None) == 'vit':
+        if isinstance(config.img_processor, dict) and config.img_processor.get('name', None) == 'vit_skatr':
             self.img_processor = PretrainedViT(backbone_dir=pretrained_backbone_dir)
             image_dim_out = config.img_processor['image_dim_out']
-            self.num_img_tokens = config.img_processor['num_img_tokens']
-            self.patch_sizes = config.img_processor['patch_sizes']
+            self.patch_size = config.img_processor['patch_size']
         else:
             raise NotImplementedError(f'img_processor = {config.img_processor}, not implemented')
 
@@ -403,7 +404,19 @@ class Phi3ImageEmbeddingSkatr(nn.Module):
         # else:
         #     raise NotImplementedError(f'projection_cls = {projection_cls}, not implemented')
 
-        self.img_projection = nn.Linear(image_dim_out, hidden_size)
+        projection_cls = kwargs.get('projection_cls', 'linear')
+        if projection_cls == 'linear':
+            self.img_projection = nn.Linear(image_dim_out, hidden_size)
+        elif projection_cls == 'mlp':
+            dim_projection = hidden_size
+            depth = 2
+            layers = [nn.Linear(image_dim_out, dim_projection)]
+            for _ in range(1, depth):
+                layers.extend([nn.GELU(),
+                                nn.Linear(dim_projection, dim_projection)])
+            self.img_projection = nn.Sequential(*layers)
+        else:
+            raise NotImplementedError(f'projection_cls = {projection_cls}, not implemented')
 
         self.vocab_size = config.vocab_size
         self.img_features = None
@@ -451,10 +464,10 @@ class Phi3ImageEmbeddingSkatr(nn.Module):
         hidden_states = self.wte(input_ids)
 
         if has_image:
-            num_images, num_crops, c, h, w, d = pixel_values.shape
-            assert c == 1 and h == self.patch_sizes[0] and w == self.patch_sizes[1] and d == self.patch_sizes[2]
-            img_features = self.get_img_features(pixel_values.flatten(0, 1)).reshape(
-                num_images, num_crops, -1, self.image_dim_out
+            num_images, c, h, w, d = pixel_values.shape
+            # assert h == self.patch_size[0] and w == self.patch_size[1] and d == self.patch_size[2]
+            img_features = self.get_img_features(pixel_values).reshape(
+                num_images, -1, self.image_dim_out
             )
             # image_features_proj = self.hd_feature_transform(img_features, image_sizes)
             image_features_proj = self.img_projection(img_features)

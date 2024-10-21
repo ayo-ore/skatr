@@ -1,0 +1,7 @@
+{
+    "auto_map": {
+      "AutoProcessor": "processing_llm_vit.LLMViTProcessor"
+    },
+    "processor_class": "LLMViTProcessor"
+  }
+  
