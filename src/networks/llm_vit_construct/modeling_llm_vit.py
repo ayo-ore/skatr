@@ -41,10 +41,12 @@ try:
 except ImportError:
     pass
 
+
 import torch
 from torch import nn
 from transformers import CLIPVisionConfig, CLIPVisionModel, PretrainedConfig
 from transformers.models.clip.modeling_clip import CLIPAttention
+from transformers import AutoConfig, AutoModel, AutoModelForCausalLM
 
 from einops import rearrange, repeat
 from functools import partial
@@ -498,8 +500,8 @@ class LLMViTImageEmbedding(nn.Module):
         else:
             self.type_feature = 'patch'
 
-    def load_vit_weights(self, backbone_dir):
-        model_state = torch.load(os.path.join(backbone_dir, 'model.pt'))["model"]
+    def load_vit_weights(self, backbone_file):
+        model_state = torch.load(backbone_file)["model"]
         net_state = {
             k.replace('net.', ''): v for k,v in model_state.items() if k.startswith('net.')
         }
@@ -1676,26 +1678,26 @@ class LLMViTModel(LLMViTPreTrainedModel):
             attentions=all_self_attns,
         )
 
-    def exchange_vit_for_skatr(self, img_processor_config, embd_layer_config=None, pretrained_backbone_dir=None):
+    # def exchange_vit_for_skatr(self, img_processor_config, embd_layer_config=None, pretrained_backbone_dir=None):
         
 
-        self.config.img_processor = img_processor_config
-        if embd_layer_config:
-            self.config.embd_layer = embd_layer_config
-        embedding_config = {
-                'embedding_cls': self.config.embd_layer['embedding_cls'],
-                **self.config.embd_layer
-            }
-        self.vision_embed_tokens = LLMViTImageEmbedding(
-            self.config,
-            wte=self.embed_tokens,
-            pretrained_backbone_dir=pretrained_backbone_dir,
-            **embedding_config
-            )
+    #     self.config.img_processor = img_processor_config
+    #     if embd_layer_config:
+    #         self.config.embd_layer = embd_layer_config
+    #     embedding_config = {
+    #             'embedding_cls': self.config.embd_layer['embedding_cls'],
+    #             **self.config.embd_layer
+    #         }
+    #     self.vision_embed_tokens = LLMViTImageEmbedding(
+    #         self.config,
+    #         wte=self.embed_tokens,
+    #         pretrained_backbone_dir=pretrained_backbone_dir,
+    #         **embedding_config
+    #         )
 
-    def load_vit_weights(self, backbone_dir):
+    def load_vit_weights(self, backbone_file):
         if isinstance(self.config.img_processor, dict) and self.config.img_processor.get('name', None) == 'vit_skatr':
-            self.vision_embed_tokens.load_vit_weights(backbone_dir)
+            self.vision_embed_tokens.load_vit_weights(backbone_file)
 
 class LLMViTForCausalLM(LLMViTPreTrainedModel):
     _tied_weights_keys = ["lm_head.weight"]
@@ -1869,5 +1871,12 @@ class LLMViTForCausalLM(LLMViTPreTrainedModel):
             )
         return reordered_past
 
-    def load_vit_weights(self, backbone_dir):
-        self.model.load_vit_weights(backbone_dir)
+    def load_vit_weights(self, backbone_file):
+        self.model.load_vit_weights(backbone_file)
+
+# AutoConfig.register("llm_vit", LLMViTConfig)
+# AutoModel.register(LLMViTConfig, LLMViTModel)
+# AutoModelForCausalLM.register(LLMViTConfig, LLMViTForCausalLM)
+
+LLMViTConfig.register_for_auto_class()
+LLMViTForCausalLM.register_for_auto_class("AutoModelForCausalLM")

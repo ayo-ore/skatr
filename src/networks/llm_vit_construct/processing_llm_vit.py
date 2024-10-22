@@ -131,6 +131,7 @@ class LLMViTProcessor(ProcessorMixin):
         self.image_processor = image_processor
         self.tokenizer = tokenizer
         self.img_tokens = [f"<|lightcone_{i+1}|>" for i in range(1000000)]
+        self.chat_template = None
 
     def __call__(
         self,

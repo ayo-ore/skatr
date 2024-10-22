@@ -190,7 +190,7 @@ class LLMViTConfig(PretrainedConfig):
         self._rope_scaling_validation()
         self.sliding_window = sliding_window
         self.embd_layer = embd_layer
-        self.img_processor = img_processor,
+        self.img_processor = img_processor
         self.rope_scaling = rope_scaling
         self._attn_implementation = _attn_implementation
 

@@ -394,7 +394,7 @@
     "<|end|>"
   ],
   "auto_map": {
-    "AutoProcessor": "skatr_processor_phi3_v.Phi3VProcessorSkatr"
+    "AutoProcessor": "processing_llm_vit.LLMViTProcessor"
   },
   "bos_token": "<s>",
   "chat_template": "{% for message in messages %}{{'<|' + message['role'] + '|>' + '\n' + message['content'] + '<|end|>\n' }}{% endfor %}{% if add_generation_prompt and messages[-1]['role'] != 'assistant' %}{{- '<|assistant|>\n' -}}{% endif %}",
@@ -404,7 +404,7 @@
   "model_max_length": 131072,
   "pad_token": "<|endoftext|>",
   "padding_side": "right",
-  "processor_class": "Phi3VProcessor",
+  "processor_class": "LLMViTProcessor",
   "sp_model_kwargs": {},
   "tokenizer_class": "LlamaTokenizer",
   "unk_token": "<unk>",
