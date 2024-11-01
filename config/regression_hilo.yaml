@@ -1,0 +1,26 @@
+run_name: regression_hilo_${net.arch}
+experiment: RegressionExperiment
+
+target_indices: [0,1,2,3,4,5]
+loss: l1
+gaussian: False
+const_sigma_frac: 0.
+
+data:
+  dir: /remote/gpu02/ore/data/z5
+  file_by_file: False
+
+net:
+  use_head: True
+  out_channels: 6 # length of target_indices
+  backbone:
+    backbone_dir: ???
+training:
+  lr: 1.e-4
+
+defaults:
+  - default
+  - preprocessing: xandy
+  - net: vit_hilo
+  - net@net.backbone: pretrained_vit
+  - _self_

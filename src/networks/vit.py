@@ -3,7 +3,7 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, repeat
+from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
 from functools import partial
 from hydra.utils import instantiate
@@ -24,18 +24,19 @@ class ViT(nn.Module):
 
         self.cfg = cfg
         self.patch_shape = cfg.patch_shape
+        self.in_shape = cfg.in_shape
         in_channels, *axis_sizes = cfg.in_shape
-        dim = cfg.hidden_dim
+        self.dim = cfg.hidden_dim
 
         # check consistency of arguments
         check_shapes(cfg)
 
         # embedding layer
         self.patch_dim = math.prod(cfg.patch_shape) * in_channels
-        self.embedding = nn.Linear(self.patch_dim, dim)
+        self.embedding = nn.Linear(self.patch_dim, self.dim)
 
         # position encoding
-        fourier_dim = dim // 6  # sin/cos features for each dim
+        fourier_dim = self.dim // 6  # sin/cos features for each dim
         w = torch.arange(fourier_dim) / (fourier_dim - 1)
         w = (1.0 / (10_000**w)).repeat(3)
         self.pos_encoding_freqs = nn.Parameter(
@@ -48,7 +49,7 @@ class ViT(nn.Module):
         self.blocks = nn.ModuleList(
             [
                 Block(
-                    dim,
+                    self.dim,
                     cfg.num_heads,
                     mlp_ratio=cfg.mlp_ratio,
                     mlp_drop=cfg.mlp_drop,
@@ -61,7 +62,7 @@ class ViT(nn.Module):
         )
 
         # norm layer
-        self.out_norm = nn.LayerNorm(dim, eps=1e-6)
+        self.out_norm = nn.LayerNorm(self.dim, eps=1e-6)
 
         # optionally initialize a task head, input pooling, or mask token
         if cfg.use_head:
@@ -71,7 +72,7 @@ class ViT(nn.Module):
         if cfg.use_input_conv:
             self.init_input_conv(cfg.input_conv)
         if self.cfg.use_mask_token:
-            self.mask_token = nn.Parameter(torch.randn(dim))
+            self.mask_token = nn.Parameter(torch.randn(self.dim))
 
     def init_head(self, cfg):
         self.head = instantiate(cfg)
@@ -217,7 +218,7 @@ class PredictorViT(ViT):
 
         super().__init__(cfg)
 
-        # override embedding layer # TODO: better way?
+        # override embedding layer
         self.embedding = nn.Linear(cfg.in_dim, cfg.hidden_dim)
         self.out_proj = nn.Linear(cfg.hidden_dim, cfg.in_dim)
 
@@ -431,3 +432,72 @@ def check_shapes(cfg):
     assert (
         not cfg.hidden_dim % 6
     ), f"Hidden dim should be divisible by 6 (for fourier position embeddings)"
+
+
+class HiLoViT(ViT):
+
+    def __init__(self, cfg):
+
+        super().__init__(cfg)
+
+        # load backbone vit
+        self.vit = PretrainedViT(cfg.backbone)
+
+        # get hi- and lo-res shapes
+        self.hr_shape = cfg.in_shape[1:3] # assuming no tiling in z direction
+        self.lr_shape = self.vit.in_shape[1:3]
+
+        # determine zooming in each axis
+        self.zoom_factors = [
+            s // v for s, v in zip(self.hr_shape, self.lr_shape)
+        ]
+
+        # initialize unstructured positional encodings for local tiles
+        self.pos_encoding_mtx = nn.Parameter(
+            torch.empty(math.prod(self.zoom_factors) + 1, self.dim)
+        )
+        torch.nn.init.trunc_normal_(self.pos_encoding_mtx)
+
+        # TODO: allow for mismatched embedding dims
+        # self.embedding = nn.Linear(self.vit.dim, self.dim)
+        assert self.vit.dim == self.dim
+        
+    @property
+    def pos_encoding(self):
+        return self.pos_encoding_mtx
+    
+    def forward(self, x):
+
+        batchsize = x.size(0)
+
+        # downsample image
+        x_global = reduce(
+          x, "b c (nx px) (ny py) z -> b c nx ny z", "mean",
+          **dict(zip(('px', 'py'), self.zoom_factors))
+        )
+        # split image into tiles
+        xs_local = rearrange(
+            x, "b c (nx px) (ny py) z -> b (nx ny) c px py z",
+            **dict(zip(('px', 'py'), self.lr_shape))
+        )
+
+        # forward pass all through vit and stack
+        z_global = self.vit(x_global).mean(-2)
+        zs_local = self.vit(xs_local.flatten(0, 1)).unflatten(0, (batchsize, -1)).mean(-2)
+        z = torch.cat([z_global.unsqueeze(1), zs_local], 1)
+
+        # add pos encoding
+        z = z + self.pos_encoding
+
+        for block in self.blocks:
+            z = block(z)
+
+        z = self.out_norm(z)
+
+        if hasattr(self, "head"):
+            # aggregate patch features and apply task head
+            # z -> (batch_size, out_channels)
+            z = torch.mean(z, axis=1)
+            z = self.head(z)
+
+        return z
