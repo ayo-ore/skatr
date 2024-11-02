@@ -36,12 +36,13 @@ class Model(nn.Module):
     def trainable_parameters(self):
         return (p for p in self.parameters() if p.requires_grad)
 
-    def update(self, optimizer, loss, step=None, total_steps=None):
+    def update(self, optimizer, loss, step=None, total_steps=None, summary_writer=None):
         # propagate gradients
         loss.backward()
         # optionally clip gradients
         if clip := self.cfg.training.gradient_norm:
-            nn.utils.clip_grad_norm_(self.trainable_parameters, clip)
+            grad_norm = nn.utils.clip_grad_norm_(self.trainable_parameters, clip)
+            summary_writer.add_scalar("gradient_norm", grad_norm.cpu().item(), step)
         # update weights
         optimizer.step()
 

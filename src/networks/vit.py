@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, reduce, repeat
-from einops.layers.torch import Rearrange
 from functools import partial
 from hydra.utils import instantiate
 from torch.utils.checkpoint import checkpoint
@@ -28,22 +27,25 @@ class ViT(nn.Module):
         in_channels, *axis_sizes = cfg.in_shape
         self.dim = cfg.hidden_dim
 
-        # check consistency of arguments
-        check_shapes(cfg)
+        
+        if self.cfg.use_patching:
+            
+            # check consistency of arguments
+            check_shapes(cfg)
 
-        # embedding layer
-        self.patch_dim = math.prod(cfg.patch_shape) * in_channels
-        self.embedding = nn.Linear(self.patch_dim, self.dim)
+            # embedding layer
+            self.patch_dim = math.prod(cfg.patch_shape) * in_channels
+            self.embedding = nn.Linear(self.patch_dim, self.dim)
 
-        # position encoding
-        fourier_dim = self.dim // 6  # sin/cos features for each dim
-        w = torch.arange(fourier_dim) / (fourier_dim - 1)
-        w = (1.0 / (10_000**w)).repeat(3)
-        self.pos_encoding_freqs = nn.Parameter(
-            w.log() if cfg.learn_pos_encoding else w,
-            requires_grad=cfg.learn_pos_encoding,
-        )
-        self.init_pos_grid(axis_sizes)
+            # position encoding
+            fourier_dim = self.dim // 6  # sin/cos features for each dim
+            w = torch.arange(fourier_dim) / (fourier_dim - 1)
+            w = (1.0 / (10_000**w)).repeat(3)
+            self.pos_encoding_freqs = nn.Parameter(
+                w.log() if cfg.learn_pos_encoding else w,
+                requires_grad=cfg.learn_pos_encoding,
+            )
+            self.init_pos_grid(axis_sizes)
 
         # transformer stack
         self.blocks = nn.ModuleList(
@@ -67,67 +69,18 @@ class ViT(nn.Module):
         # optionally initialize a task head, input pooling, or mask token
         if cfg.use_head:
             self.init_head(cfg.head)
-        if cfg.adapt_res:
-            self.init_adaptor(cfg.adaptor)
-        if cfg.use_input_conv:
-            self.init_input_conv(cfg.input_conv)
         if self.cfg.use_mask_token:
             self.mask_token = nn.Parameter(torch.randn(self.dim))
 
     def init_head(self, cfg):
         self.head = instantiate(cfg)
 
-    def init_adaptor(self, cfg):
-
-        # downsampling conv
-        pool = nn.Conv3d(1, cfg.channels, cfg.downsample_factor, cfg.downsample_factor)
-        if cfg.init_pool_as_mean:
-            nn.init.constant_(pool.weight, 1 / cfg.downsample_factor**3)
-            nn.init.constant_(pool.bias, 0.0)
-
-        use_relu = True
-        if cfg.replace_embedding:
-            self.embedding = nn.Linear(
-                cfg.channels * self.patch_dim, self.cfg.hidden_dim
-            )
-        elif cfg.extra_proj:
-            self.extra_proj = nn.Linear(cfg.channels * self.patch_dim, self.patch_dim)
-        else:
-            use_relu = False
-
-        self.adaptor = nn.Sequential(pool)
-        if use_relu:
-            self.adaptor.append(nn.ReLU())
-        if cfg.batchnorm:
-            self.adaptor.append(nn.BatchNorm3d(cfg.channels))
-
-    def init_input_conv(self, cfg):
-
-        # downsampling conv
-        self.input_conv = nn.Sequential(
-            Rearrange(
-                "b c (nx p1) (ny p2) (nz p3) -> (b nx ny nz) c p1 p2 p3",
-                **dict(zip(("nx", "ny", "nz"), self.num_patches)),
-            ),
-            nn.Conv3d(1, cfg.channels, cfg.kernel1, cfg.stride1),
-            nn.ReLU(),
-            nn.BatchNorm3d(cfg.channels),
-            nn.Conv3d(cfg.channels, cfg.channels, cfg.kernel2, cfg.stride2),
-            nn.ReLU(),
-            nn.BatchNorm3d(cfg.channels),
-            Rearrange(
-                "(b nx ny nz) c X Y Z -> b (nx ny nz) (c X Y Z)",
-                **dict(zip(("nx", "ny", "nz"), self.num_patches)),
-            ),
-            nn.Linear(cfg.conv_out_dim, self.cfg.hidden_dim),
-        )
-
     def init_pos_grid(self, axis_sizes):
         self.num_patches = [s // p for s, p in zip(axis_sizes, self.cfg.patch_shape)]
         for i, n in enumerate(self.num_patches):  # axis values for each dim
             self.register_buffer(f"grid_{i}", torch.arange(n) * (2 * math.pi / n))
 
-    def pos_encoding(self):  # TODO: Simplify for fixed dim=3
+    def pos_encoding(self):
         grids = [getattr(self, f"grid_{i}") for i in range(3)]
         coords = torch.meshgrid(*grids, indexing="ij")
 
@@ -150,12 +103,7 @@ class ViT(nn.Module):
         :param mask: a tensor of patch indices that should be masked out of `x`.
         """
 
-        if hasattr(self, "adaptor"):
-            x = self.adaptor(x)
-
-        if hasattr(self, "input_conv"):
-            x = self.input_conv(x)
-        else:
+        if self.cfg.use_patching:
             # patchify input
             # x -> (batch_size, number_of_patches, voxels_per_patch)
             x = self.to_patches(x)
@@ -434,6 +382,84 @@ def check_shapes(cfg):
     ), f"Hidden dim should be divisible by 6 (for fourier position embeddings)"
 
 
+class HiLoAdaptor(nn.Module):
+
+    def __init__(self, cfg):
+
+        super().__init__()
+
+        # load backbone vit
+        self.vit = PretrainedViT(cfg.backbone)
+
+        # get hi- and lo-res shapes
+        self.hr_shape = cfg.in_shape[1:3]  # assuming no tiling in z direction
+        self.lr_shape = self.vit.in_shape[1:3]
+
+        # determine zooming in each axis
+        self.zoom_factors = [s // v for s, v in zip(self.hr_shape, self.lr_shape)]
+
+        # optionally rescale ViT positional encoding
+        if cfg.rescale_pos_encoding:
+            self.vit.grid_0 /= self.zoom_factors[0]
+            self.vit.grid_1 /= self.zoom_factors[1]
+
+        # One-hot positional encodings
+        self.register_buffer('one_hot_eye', torch.eye(math.prod(self.zoom_factors)+1))
+
+        # # Fixed sin/cos positional encodings
+        # fourier_dim = self.vit.dim // 4
+        # w = torch.arange(fourier_dim) / (fourier_dim - 1)
+        # self.register_buffer("pos_encoding_freqs", (1.0 / (10_000**w)).repeat(2))
+        # for i, n in enumerate(self.zoom_factors):
+        #     self.register_buffer(f"grid_{i}", torch.arange(n) * (2 * math.pi / n))
+
+        # TODO: allow for mismatched embedding dims
+        # self.embedding = nn.Linear(self.vit.dim, self.dim)
+        # assert self.vit.dim == self.dim
+
+    # def pos_encoding(self):
+    #     coords = torch.meshgrid(self.grid_0, self.grid_1, indexing="ij")
+    #     freqs = self.pos_encoding_freqs.chunk(2)
+    #     features = [
+    #         trig_fn(x.flatten()[:, None] * w[None, :])
+    #         for (x, w) in zip(coords, freqs)
+    #         for trig_fn in (torch.sin, torch.cos)
+    #     ]
+    #     return torch.cat(features, dim=1)
+
+    def forward(self, x):
+
+        batchsize = x.size(0)
+
+        # downsample image
+        x_global = reduce(
+            x,
+            "b c (nx px) (ny py) z -> b c nx ny z",
+            "mean",
+            **dict(zip(("px", "py"), self.zoom_factors)),
+        )
+        # split image into tiles
+        xs_local = rearrange(
+            x,
+            "b c (nx px) (ny py) z -> b (nx ny) c px py z",
+            **dict(zip(("px", "py"), self.lr_shape)),
+        )
+
+        # forward pass all through vit and stack
+        z_global = self.vit(x_global).mean(-2)
+        zs_local = (
+            self.vit(xs_local.flatten(0, 1)).unflatten(0, (batchsize, -1)).mean(-2)
+        )
+        z = torch.cat([z_global.unsqueeze(1), zs_local], 1)
+
+        # add pos encoding
+        # z = z + self.pos_encoding()
+        pos_encoding = self.one_hot_eye[None, ...].repeat(batchsize, 1, 1)
+        z = torch.cat([z, pos_encoding], 2)       
+
+        return z
+
+
 class HiLoViT(ViT):
 
     def __init__(self, cfg):
@@ -444,13 +470,16 @@ class HiLoViT(ViT):
         self.vit = PretrainedViT(cfg.backbone)
 
         # get hi- and lo-res shapes
-        self.hr_shape = cfg.in_shape[1:3] # assuming no tiling in z direction
+        self.hr_shape = cfg.in_shape[1:3]  # assuming no tiling in z direction
         self.lr_shape = self.vit.in_shape[1:3]
 
         # determine zooming in each axis
-        self.zoom_factors = [
-            s // v for s, v in zip(self.hr_shape, self.lr_shape)
-        ]
+        self.zoom_factors = [s // v for s, v in zip(self.hr_shape, self.lr_shape)]
+
+        # optionally rescale ViT positional encoding
+        if cfg.rescale_pos_encoding:
+            self.vit.grid_0 /= self.zoom_factors[0]
+            self.vit.grid_1 /= self.zoom_factors[1]
 
         # initialize unstructured positional encodings for local tiles
         self.pos_encoding_mtx = nn.Parameter(
@@ -461,29 +490,34 @@ class HiLoViT(ViT):
         # TODO: allow for mismatched embedding dims
         # self.embedding = nn.Linear(self.vit.dim, self.dim)
         assert self.vit.dim == self.dim
-        
+
     @property
     def pos_encoding(self):
         return self.pos_encoding_mtx
-    
+
     def forward(self, x):
 
         batchsize = x.size(0)
 
         # downsample image
         x_global = reduce(
-          x, "b c (nx px) (ny py) z -> b c nx ny z", "mean",
-          **dict(zip(('px', 'py'), self.zoom_factors))
+            x,
+            "b c (nx px) (ny py) z -> b c nx ny z",
+            "mean",
+            **dict(zip(("px", "py"), self.zoom_factors)),
         )
         # split image into tiles
         xs_local = rearrange(
-            x, "b c (nx px) (ny py) z -> b (nx ny) c px py z",
-            **dict(zip(('px', 'py'), self.lr_shape))
+            x,
+            "b c (nx px) (ny py) z -> b (nx ny) c px py z",
+            **dict(zip(("px", "py"), self.lr_shape)),
         )
 
         # forward pass all through vit and stack
         z_global = self.vit(x_global).mean(-2)
-        zs_local = self.vit(xs_local.flatten(0, 1)).unflatten(0, (batchsize, -1)).mean(-2)
+        zs_local = (
+            self.vit(xs_local.flatten(0, 1)).unflatten(0, (batchsize, -1)).mean(-2)
+        )
         z = torch.cat([z_global.unsqueeze(1), zs_local], 1)
 
         # add pos encoding

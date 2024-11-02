@@ -1,0 +1,36 @@
+run_name: regression_hilo_sum_${net.arch}
+experiment: RegressionExperiment
+
+target_indices: [0,1,2,3,4,5]
+loss: l1
+gaussian: False
+const_sigma_frac: 0.
+
+data:
+  dir: /remote/gpu02/ore/data/z5
+  file_by_file: True
+  summarize: True
+  summary_batch_size: ${training.batch_size}
+
+summary_net:
+  backbone:
+    backbone_dir: ???
+
+net:
+  depth: 1
+  hidden_dim: 170
+  num_heads: 5
+  use_patching: False
+  use_head: True
+  out_channels: 6 # length of target_indices
+  
+training:
+  lr: 1.e-4
+
+defaults:
+  - default
+  - preprocessing: xandy
+  - net: vit
+  - net@summary_net: hilo_adaptor
+  - net@summary_net.backbone: pretrained_vit
+  - _self_

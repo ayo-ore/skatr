@@ -1,7 +1,7 @@
 arch: HiLoViT
 
 in_shape: [1, 140, 140, 470]
-patch_shape: [1, 1, 1]
+patch_shape: [1, 1, 1]  # redundant
 out_channels: 6
 hidden_dim: 144
 depth: 4
@@ -12,8 +12,9 @@ proj_drop: 0.
 mlp_drop: 0.
 out_act: sigmoid
 checkpoint_grads: False
-learn_pos_encoding: False
-use_mask_token: False
+learn_pos_encoding: False  # redundant
+use_patching: True # redundant
+use_mask_token: False # redundant
 
 use_head: False
 head:
@@ -27,5 +28,5 @@ head:
     out_act: ${net.out_act}
     drop: ${net.mlp_drop}
 
-adapt_res: False
-use_input_conv: False
+adapt_res: False  # redundant
+use_input_conv: False  # redundant
