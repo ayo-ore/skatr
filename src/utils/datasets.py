@@ -91,7 +91,8 @@ class SummarizedLCDataset(Dataset):
 
         self.pool_summary = not (
             hasattr(summary_net, "head")
-            or exp_cfg.net.arch in ["AttentiveHead", "HiLoAdaptor"]
+            or exp_cfg.net.arch == "AttentiveHead"
+            or exp_cfg.summary_net.arch == "HiLoAdaptor"
             or (hasattr(exp_cfg, "use_attn_pool") and exp_cfg.use_attn_pool)
         )
 

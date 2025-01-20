@@ -43,13 +43,12 @@ class BaseExperiment:
         if self.cfg.train or self.cfg.evaluate:
             
             self.model = self.get_model().to(device=self.device, dtype=self.dtype_train)
-            
+            # self.model = torch.compile(self.model)
+
             self.log.info(
                 f'Model ({self.model.__class__.__name__}[{self.model.net.__class__.__name__}]) has '
                 f'{sum(w.numel() for w in self.model.trainable_parameters)} trainable parameters'
             )
-
-        if self.cfg.train or self.cfg.evaluate:
             
             self.log.info('Initializing dataloaders')
             dataloaders = self.get_dataloaders()

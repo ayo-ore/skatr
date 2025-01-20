@@ -19,6 +19,21 @@ class Regressor(Model):
 
         return loss
 
+    # def forward(self, x): # HiLoAdaptor
+
+    #     pool_summary = not (
+    #         hasattr(self.summary_net, "head")
+    #         or self.cfg.summary_net.arch in ("CNN", "HiLoAdaptor")
+    #     )
+
+    #     if hasattr(self, "summary_net") and not self.cfg.data.summarize:
+
+    #         x = self.summary_net(x)
+    #         if pool_summary:
+    #             x = x.mean(1)  # (B, T, D) --> (B, D)
+
+    #     return self.net(x)
+
     def forward(self, x):
 
         if hasattr(self, "summary_net") and not self.cfg.data.summarize:
@@ -31,7 +46,7 @@ class Regressor(Model):
                 x = x.mean(1)  # (B, T, D) --> (B, D)
 
         return self.net(x)
-
+    
     @torch.inference_mode()
     def predict(self, x):
         return self.forward(x)
@@ -51,6 +66,10 @@ class GaussianRegressor(Regressor):
         mu, sigma = self(x)
         # optionally fix sigma constant
         sigma = (1 - self.stop_sigma) * sigma + self.stop_sigma
+
+        # clip sigma
+        sigma = sigma.clamp(min=1e-3, max=1)
+
         # gaussian likelihood
         loss = 0.5 * ((y - mu) / sigma) ** 2 + sigma.log()
 

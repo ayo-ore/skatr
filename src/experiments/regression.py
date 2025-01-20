@@ -140,9 +140,10 @@ class RegressionExperiment(BaseExperiment):
                 bin_centers = (bins[1:] + bins[:-1]) / 2
                 bin_idcs = np.digitize(labels, bins)
                 partitions = [preds[bin_idcs == i + 1] for i in range(num_bins)]
-                mares = abs(preds - labels) / labels
+                # mares = abs(preds - labels) / labels
+                mares = abs(preds - labels) / (hi - lo)
                 mare_partitions = [mares[bin_idcs == i + 1] for i in range(num_bins)]
-                MARE = mares.mean()
+                NMAE = mares.mean()
 
                 if self.cfg.gaussian:
                     errs = [
@@ -158,7 +159,7 @@ class RegressionExperiment(BaseExperiment):
                 main_ax.errorbar(
                     bin_centers, list(map(np.mean, partitions)), yerr=errs, **err_kwargs
                 )
-                main_ax.text(0.1, 0.9, f"{MARE=:.1e}", transform=main_ax.transAxes)
+                main_ax.text(0.1, 0.9, f"{NMAE=:.1e}", transform=main_ax.transAxes)
 
                 # fill ratio axis
                 ratio_ax.errorbar(
@@ -167,15 +168,15 @@ class RegressionExperiment(BaseExperiment):
                     yerr=list(map(np.std, mare_partitions)),
                     **err_kwargs,
                 )
-                ratio_ax.axhline(y=MARE, color="navy", ls="--", lw=1)
-                ratio_ax.semilogy()
+                ratio_ax.axhline(y=NMAE, color="navy", ls="--", lw=1)
+                # ratio_ax.semilogy()
 
                 # axis labels
                 param_idx = self.cfg.target_indices[i]
                 main_ax.set_title(PARAM_NAMES[param_idx], fontsize=14)
                 main_ax.set_ylabel("Network", fontsize=13)
                 ratio_ax.set_ylabel(
-                    r"$\left|\frac{\text{Net}\,-\,\text{True}}{\text{True}}\right|$",
+                    r'$\left|\frac{\text{Net}\,-\,\text{True}}{\text{Max} - \text{Min}}\right|$',
                     fontsize=10,
                 )
                 ratio_ax.set_xlabel("Truth", fontsize=13)
