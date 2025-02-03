@@ -84,9 +84,10 @@ def get_submit_cmd_slurm(cfg, hcfg, overrides):
     ccfg = cfg.cluster
     setup_cmd = f"cd {cfg.proj_dir}; ./setup.sh"
     script_cmd = f"python main.py -cn {hcfg.job.config_name} {" ".join(overrides)}"
+    node_str = f" -w {ccfg.node}" if ccfg.node else ""
     cmd = (
         f"sbatch -p {ccfg.queue} --mem {ccfg.mem} -N 1 -c {cfg.num_cpus or 1}"
-        f" --gres=gpu:{ccfg.num_gpus} -t {ccfg.time} -J {cfg.run_name}"
+        f" --gres=gpu:{ccfg.num_gpus} -t {ccfg.time} -J {cfg.run_name} {node_str}"
         f' -o {hcfg.runtime.output_dir}/slurm.log --wrap "{setup_cmd}; {script_cmd}"'
     )
 

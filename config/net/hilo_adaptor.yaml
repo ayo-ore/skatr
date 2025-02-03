@@ -2,3 +2,4 @@ arch: HiLoAdaptor
 
 in_shape: [1, 140, 140, 470]
 rescale_pos_encoding: False
+frozen: True

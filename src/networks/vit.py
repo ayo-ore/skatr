@@ -396,9 +396,10 @@ def check_shapes(cfg):
         assert (
             not s % p
         ), f"Input size ({s}) should be divisible by patch size ({p}) in axis {i}."
+    image_dim = (len(cfg.in_shape) - 1)
     assert (
-        not cfg.hidden_dim % 6
-    ), f"Hidden dim should be divisible by 6 (for fourier position embeddings)"
+        not cfg.hidden_dim % 2*image_dim
+    ), f"Hidden dim should be divisible by {2*image_dim} (for fourier position embeddings)"
 
 
 class HiLoAdaptor(nn.Module):

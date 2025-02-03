@@ -15,11 +15,12 @@ data:
 summary_net:
   backbone:
     backbone_dir: ???
+  frozen: ${summary_net.backbone.frozen}
 
 net:
   depth: 1
-  hidden_dim: 170
-  num_heads: 5
+  hidden_dim: 360
+  num_heads: 4
   use_patching: False
   use_head: True
   out_channels: 6 # length of target_indices

@@ -41,8 +41,9 @@ class Model(nn.Module):
         loss.backward()
         # optionally clip gradients
         if clip := self.cfg.training.gradient_norm:
-            grad_norm = nn.utils.clip_grad_norm_(self.trainable_parameters, clip)
-            summary_writer.add_scalar("gradient_norm", grad_norm.cpu().item(), step)
+            nn.utils.clip_grad_norm_(self.trainable_parameters, clip)
+            # grad_norm = nn.utils.clip_grad_norm_(self.trainable_parameters, clip)
+            # summary_writer.add_scalar("gradient_norm", grad_norm.cpu().item(), step)
         # update weights
         optimizer.step()
 
