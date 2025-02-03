@@ -3,8 +3,8 @@ import torch
 import torch.nn.functional as F
 from omegaconf import DictConfig
 
-from src import networks
 from src.models.base_model import Model
+from src.networks import NdPredictorViT
 from src.utils import augmentations, masks
 
 
@@ -12,13 +12,14 @@ class JEPA(Model):
 
     def __init__(self, cfg: DictConfig):
         super().__init__(cfg)
-        self.predictor = networks.PredictorViT(cfg.predictor)
         self.ctx_encoder = self.net
         self.tgt_encoder = (
             copy.deepcopy(self.ctx_encoder)
             if cfg.init_tgt_as_ctx
             else self.net.__class__(cfg.net)
         )
+        self.predictor = NdPredictorViT(cfg.predictor)
+        
         self.augment = augmentations.RotateAndReflect()
 
         match cfg.sim:

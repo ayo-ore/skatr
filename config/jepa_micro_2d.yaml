@@ -1,0 +1,46 @@
+run_name: jepa_micro_2d
+experiment: PretrainingExperiment2D
+evaluate: False
+plot: False
+
+model: JEPA
+ema_momentum: 0.997
+momentum_schedule: True
+sim: smooth_l1
+augment: False
+init_tgt_as_ctx: True
+
+net: # encoders
+  use_mask_token: False
+  use_head: False
+  hidden_dim: 256
+
+predictor:
+  use_head: False
+  hidden_dim: 64
+  learn_pos_encoding: False
+  in_dim: ${net.hidden_dim}
+  in_shape: ${net.in_shape}
+  patch_shape: ${net.patch_shape}
+
+data:
+  dir: /scratch/nordmann/data_new/x5
+  use_test_dir: True
+  file_by_file: False
+  zfrac: 0.2
+
+training:
+  epochs: 1000
+  lr: 0.001
+  batch_size: 512
+  optimizer:
+    name: AdamW
+    kwargs: {}
+
+defaults:
+  - default
+  - masking: multiblock
+  - net: vit_micro_2d
+  - net@predictor: vit_micro_2d
+  - preprocessing: xonly  
+  - _self_

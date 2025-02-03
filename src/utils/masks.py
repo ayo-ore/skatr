@@ -45,6 +45,11 @@ def JEPA_mask(num_patches, cfg, batch_size, device):
     with different block sampling parameters respectively. The contexts are the complements of their targets.
     """
 
+    # two_dim = False # may need to squeeze a dimension later
+    if len(num_patches) == 2:
+        num_patches = [*num_patches, 1]
+        # two_dim = True
+        
     # sample block size (once per batch)
     block_sizes = [
         sample_block_size(num_patches, cfg, mode="short" if i % 2 else "long")

@@ -32,3 +32,12 @@ class PretrainingExperiment(BaseExperiment):
     
     def plot(self):
         raise NotImplementedError    
+
+
+class PretrainingExperiment2D(PretrainingExperiment):
+
+    def get_dataset(self, directory):
+        prep = self.preprocessing
+        return datasets.LCSliceDataset(
+            self.cfg.data, directory, self.device, preprocessing=prep
+        )

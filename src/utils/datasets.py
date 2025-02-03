@@ -142,3 +142,74 @@ class SummarizedLCDataset(Dataset):
         X, y = torch.utils.data.default_collate(batch)
         idx = torch.randint(X.size(1), ())
         return X[:, idx], y
+
+class LCSliceDataset(Dataset):
+
+    def __init__(self, cfg, directory, device, use_labels=True, preprocessing=None):
+
+        self.use_labels = use_labels
+        self.files = sorted(glob(f"{directory}/run*.npz"))
+        self.Xs, self.ys = [], []
+
+        # dtype = torch.get_default_dtype()
+        dtype = getattr(torch, cfg.dtype)
+
+        for f in self.files:  # TODO: parallelize
+            record = np.load(f)
+
+            # read and preprocess
+            X = torch.from_numpy(record["image"]).to(dtype)
+            
+            # crop
+            X = X[..., -int(cfg.zfrac * X.shape[-1]):]
+            for f in preprocessing["x"]:
+                X = f.forward(X)
+
+            self.Xs.append(X)
+
+        self.Xs = torch.cat(self.Xs, dim=-1).permute(3, 0, 1, 2)
+
+        if cfg.on_gpu:
+            self.Xs = self.Xs.to(device)
+
+    def __len__(self):
+        return len(self.Xs)
+
+    def __getitem__(self, idx):
+        return (self.Xs[idx], )
+    
+
+class LCPatchDataset(Dataset):
+
+    def __init__(self, cfg, directory, device, use_labels=True, preprocessing=None):
+
+        self.use_labels = use_labels
+        self.files = sorted(glob(f"{directory}/run*.npz"))
+        self.Xs, self.ys = [], []
+
+        # dtype = torch.get_default_dtype()
+        dtype = getattr(torch, cfg.dtype)
+
+        for f in self.files:  # TODO: parallelize
+            record = np.load(f)
+
+            # read and preprocess
+            X = torch.from_numpy(record["image"]).to(dtype)
+            
+            # crop
+            X = X[..., -int(cfg.zfrac * X.shape[-1]):]
+            for f in preprocessing["x"]:
+                X = f.forward(X)
+
+            self.Xs.append(X)
+
+        self.Xs = torch.cat(self.Xs, dim=-1).permute(3, 0, 1, 2)
+
+        if cfg.on_gpu:
+            self.Xs = self.Xs.to(device)
+
+    def __len__(self):
+        return len(self.Xs)
+
+    def __getitem__(self, idx):
+        return (self.Xs[idx], )    

@@ -1,0 +1,29 @@
+arch: NdViT
+in_shape: [1, 28, 28]
+out_channels: 6
+patch_shape: [2, 2] # 14 x 14 = 196 tokens with 4 pixels
+hidden_dim: 256
+depth: 4
+num_heads: 8
+mlp_ratio: 4.0
+attn_drop: 0.
+proj_drop: 0.
+mlp_drop: 0.
+linear: False
+learn_pos_encoding: True
+out_act: sigmoid
+use_patching: True
+use_mask_token: True
+checkpoint_grads: False
+
+use_head: False
+head:
+  _target_: src.networks.MLP
+  cfg:
+    units:
+      - ${net.hidden_dim}
+      - ${net.hidden_dim}
+      - ${net.out_channels}
+    act: relu
+    out_act: ${net.out_act}
+    drop: ${net.mlp_drop}
