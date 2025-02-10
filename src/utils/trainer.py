@@ -163,11 +163,6 @@ class Trainer:
 
             # calculate batch loss
             loss = self.model.batch_loss(batch)
-            # check for nans / infs in loss
-            loss_numpy = loss.detach().cpu().numpy()
-            if ~np.isfinite(loss_numpy):
-                log.info(f"Unstable loss. Skipping backprop for epoch {self.epoch}")
-                continue
 
             # update model parameters
             step = itr + self.epoch * self.steps_per_epoch
@@ -178,14 +173,19 @@ class Trainer:
             if self.cfg.scheduler:
                 self.scheduler.step()
 
-            # track loss
-            train_losses.append(loss_numpy)
-            if self.cfg.use_tensorboard:
-                self.summarizer.add_scalar("iter_loss_train", loss_numpy, step)
+            # track iter loss
+            train_losses.append(loss.detach())
+            log_step = self.cfg.log_iters
+            if self.cfg.use_tensorboard and (not step % log_step) or not step:
+                self.summarizer.add_scalar(
+                    "iter_loss_train",
+                    torch.stack(train_losses[-log_step:]).mean().cpu().numpy(),
+                    step,
+                )
 
-        # track loss
+        # track epoch loss
         self.epoch_train_losses = np.append(
-            self.epoch_train_losses, np.mean(train_losses)
+            self.epoch_train_losses, torch.stack(train_losses).mean().cpu().numpy()
         )
 
         # optionally log to tensorboard
@@ -213,11 +213,13 @@ class Trainer:
             # place x on device
             batch = ensure_device_and_dtype(batch, self.device, self.dtype)
             # calculate loss
-            loss = self.model.batch_loss(batch).detach().cpu().numpy()
+            loss = self.model.batch_loss(batch).detach()
             val_losses.append(loss)
 
         # track loss
-        self.epoch_val_losses = np.append(self.epoch_val_losses, np.mean(val_losses))
+        self.epoch_val_losses = np.append(
+            self.epoch_val_losses, torch.stack(val_losses).mean().cpu().numpy()
+        )
 
         # optional logging to tensorboard
         if self.cfg.use_tensorboard:

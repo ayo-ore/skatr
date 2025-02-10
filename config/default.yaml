@@ -45,6 +45,7 @@ training:
   patience: null
   save_best_epoch: True
   save_freq: null
+  log_iters: 50
   warm_start: null
   warm_start_epoch: null
   use_tensorboard: True
