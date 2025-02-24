@@ -26,6 +26,8 @@ class BaseExperiment:
             else f'mps:{cfg.device}' if cfg.use_gpu else 'cpu'
         )
         self.log.info(f'Using device {self.device}')
+        if cfg.use_tf32:
+            torch.backends.cuda.matmul.allow_tf32 = True        
 
         # initialize preprocessing transforms (for data and targets)
         self.preprocessing={

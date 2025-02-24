@@ -61,10 +61,10 @@ class JEPA(Model):
 
         return loss
 
-    def update(self, optimizer, loss, step=None, total_steps=None):
+    def update(self, loss, optimizer, scaler, step=None, total_steps=None):
 
         # student update
-        super().update(optimizer, loss)
+        super().update(loss, optimizer, scaler)
 
         # teacher update via exponential moving average of student
         tau = self.cfg.ema_momentum

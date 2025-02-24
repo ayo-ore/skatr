@@ -36,16 +36,30 @@ class Model(nn.Module):
     def trainable_parameters(self):
         return (p for p in self.parameters() if p.requires_grad)
 
-    def update(self, optimizer, loss, step=None, total_steps=None):
+    def update(
+        self, loss, optimizer, scaler, step=None, total_steps=None, summary_writer=None
+    ):
+
+        # scale gradients for mixed precision stability
+        loss = scaler.scale(loss)
+
         # propagate gradients
         loss.backward()
+
         # optionally clip gradients
         if clip := self.cfg.training.gradient_norm:
             nn.utils.clip_grad_norm_(self.trainable_parameters, clip)
+            # grad_norm = nn.utils.clip_grad_norm_(self.trainable_parameters, clip)
+            # summary_writer.add_scalar("gradient_norm", grad_norm.cpu().item(), step)
+
         # update weights
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
+
+        # zero parameter gradients
+        optimizer.zero_grad(set_to_none=True)
 
     def load(self, exp_dir, device):
         path = os.path.join(exp_dir, "model.pt")
-        state_dicts = torch.load(path, map_location=device)
+        state_dicts = torch.load(path, map_location=device, weights_only=False)
         self.load_state_dict(state_dicts["model"])

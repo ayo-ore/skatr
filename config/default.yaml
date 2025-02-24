@@ -8,6 +8,7 @@ proj_dir: /remote/gpu02/ore/skatr
 use_gpu: True
 num_cpus: 0
 device: 0
+use_tf32: False
 submit: False
 dry_run: False
 
@@ -34,6 +35,7 @@ training:
   optimizer:
     name: AdamW
     kwargs: {weight_decay: 1.e-3}
+  use_amp: False
   scheduler: {}
   dtype: float32
   augment: True
@@ -50,9 +52,6 @@ training:
   use_tensorboard: True
   
 summary_net: null
-# backbone: null
-# frozen_backbone: True
-# replace_backbone: False
 
 defaults:
   - cluster: pbs

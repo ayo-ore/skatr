@@ -57,10 +57,10 @@ def JEPA_mask(num_patches, cfg, batch_size, device):
         context_masks = []
         for i, block_size in enumerate(block_sizes):
             if i % 2:
-                mode = "short"
+                # short range
                 num_blocks = cfg.short_num_blocks
             else:
-                mode = "long"
+                # long range
                 num_blocks = cfg.long_num_blocks
 
             target_mask, context_mask = block_mask(num_patches, cfg, block_size, device)
@@ -92,9 +92,9 @@ def block_mask(num_patches, cfg, block_size, device):
     valid_mask = False
     while not valid_mask:
         # Sample block position
-        top = torch.randint(0, height - h + 1, (1,))
-        left = torch.randint(0, width - w + 1, (1,))
-        back = torch.randint(0, depth - d + 1, (1,))
+        top = torch.randint(0, height - h + 1, (1,), device=device)
+        left = torch.randint(0, width - w + 1, (1,), device=device)
+        back = torch.randint(0, depth - d + 1, (1,), device=device)
         mask = torch.zeros((height, width, depth), dtype=torch.int64, device=device)
         mask[top : top + h, left : left + w, back : back + d] = 1
         com_mask = 1 - mask

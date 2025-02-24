@@ -55,6 +55,9 @@ class Trainer:
             self.model.trainable_parameters, lr=self.cfg.lr, **self.cfg.optimizer.kwargs
         )
 
+        # init scaler
+        self.scaler = torch.amp.GradScaler(enabled=self.cfg.use_amp)
+
         # init scheduler
         self.steps_per_epoch = len(self.dataloaders["train"])
         if self.cfg.scheduler:
@@ -162,30 +165,33 @@ class Trainer:
                 batch[0] = augment(batch[0])
 
             # calculate batch loss
-            loss = self.model.batch_loss(batch)
-            # check for nans / infs in loss
-            loss_numpy = loss.detach().cpu().numpy()
-            if ~np.isfinite(loss_numpy):
-                log.info(f"Unstable loss. Skipping backprop for epoch {self.epoch}")
-                continue
+            with torch.autocast(self.device.type, enabled=self.cfg.use_amp):
+                loss = self.model.batch_loss(batch)
 
             # update model parameters
             step = itr + self.epoch * self.steps_per_epoch
             total_steps = self.cfg.epochs * self.steps_per_epoch
-            self.model.update(self.optimizer, loss, step, total_steps)
+            self.model.update(loss, self.optimizer, self.scaler, step, total_steps)
 
             # update learning rate
             if self.cfg.scheduler:
                 self.scheduler.step()
 
             # track loss
-            train_losses.append(loss_numpy)
-            if self.cfg.use_tensorboard:
-                self.summarizer.add_scalar("iter_loss_train", loss_numpy, step)
+            train_losses.append(loss.detach())
+            if self.cfg.use_tensorboard and (not step % self.cfg.log_iters) or not step:
+                self.summarizer.add_scalar(
+                    "iter_loss_train",
+                    torch.stack(train_losses[-self.cfg.log_iters :])
+                    .mean()
+                    .cpu()
+                    .numpy(),
+                    step,
+                )
 
         # track loss
         self.epoch_train_losses = np.append(
-            self.epoch_train_losses, np.mean(train_losses)
+            self.epoch_train_losses, torch.stack(train_losses).mean().cpu().numpy()
         )
 
         # optionally log to tensorboard
@@ -213,11 +219,14 @@ class Trainer:
             # place x on device
             batch = ensure_device_and_dtype(batch, self.device, self.dtype)
             # calculate loss
-            loss = self.model.batch_loss(batch).detach().cpu().numpy()
-            val_losses.append(loss)
+            with torch.autocast(self.device.type, enabled=self.cfg.use_amp):
+                loss = self.model.batch_loss(batch)
+            val_losses.append(loss.detach())
 
         # track loss
-        self.epoch_val_losses = np.append(self.epoch_val_losses, np.mean(val_losses))
+        self.epoch_val_losses = np.append(
+            self.epoch_val_losses, torch.stack(val_losses).mean().cpu().numpy()
+        )
 
         # optional logging to tensorboard
         if self.cfg.use_tensorboard:
@@ -229,6 +238,7 @@ class Trainer:
         """Save the model along with the training state"""
         state_dicts = {
             "opt": self.optimizer.state_dict(),
+            "scaler": self.scaler.state_dict(),
             "model": self.model.state_dict(),
             "losses": self.epoch_train_losses,
             "epoch": self.epoch,
@@ -240,7 +250,7 @@ class Trainer:
     def load(self, path):
         """Load the model and training state"""
 
-        state_dicts = torch.load(path, map_location=self.device)
+        state_dicts = torch.load(path, map_location=self.device, weights_only=False)
         self.model.load_state_dict(state_dicts["model"])
         if "losses" in state_dicts:
             self.epoch_train_losses = state_dicts.get("losses", {})
@@ -248,6 +258,8 @@ class Trainer:
             self.start_epoch = state_dicts.get("epoch", 0) + 1
         if "opt" in state_dicts:
             self.optimizer.load_state_dict(state_dicts["opt"])
+        if "scaler" in state_dicts:
+            self.scaler.load_state_dict(state_dicts["scaler"])
         if "scheduler" in state_dicts:
             self.scheduler.load_state_dict(state_dicts["scheduler"])
         self.model.net.to(self.device)
