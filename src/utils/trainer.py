@@ -154,9 +154,6 @@ class Trainer:
         # iterate batch wise over input
         for itr, batch in enumerate(self.dataloaders["train"]):
 
-            # clear optimizer gradients
-            self.optimizer.zero_grad(set_to_none=True)
-
             # place batch on device
             batch = ensure_device_and_dtype(batch, self.device, self.dtype)
 

@@ -82,7 +82,7 @@ class LCDatasetByFile(Dataset):
 class SummarizedLCDataset(Dataset):
 
     def __init__(
-        self, dataset, summary_net, device, exp_cfg, dataset_cfg, augment=False
+        self, dataset, summary_net, device, exp_cfg, dataset_cfg, augment=False, use_amp=False
     ):
 
         self.Xs = []
@@ -110,13 +110,14 @@ class SummarizedLCDataset(Dataset):
             self.ys.append(y.to(dset_device))
 
             X = X.to(device)
-            if augment:
-                summary = torch.stack(  # collect all augmentations of X
-                    [self.summarize(xa).to(dset_device) for xa in aug.enumerate(X)],
-                    dim=1,
-                )
-            else:
-                summary = self.summarize(X).to(dset_device)
+            with torch.autocast(device.type, enabled=use_amp):
+                if augment:
+                    summary = torch.stack(  # collect all augmentations of X
+                        [self.summarize(xa).to(dset_device) for xa in aug.enumerate(X)],
+                        dim=1,
+                    )
+                else:
+                    summary = self.summarize(X).to(dset_device)
             self.Xs.append(summary)
 
         self.Xs = torch.vstack(self.Xs)

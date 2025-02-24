@@ -45,6 +45,7 @@ class BaseExperiment:
         if self.cfg.train or self.cfg.evaluate:
             
             self.model = self.get_model().to(device=self.device, dtype=self.dtype_train)
+            self.model = torch.compile(self.model)
             
             self.log.info(
                 f'Model ({self.model.__class__.__name__}[{self.model.net.__class__.__name__}]) has '
@@ -150,7 +151,7 @@ class BaseExperiment:
 
                 dataset_splits[k] = SummarizedLCDataset(
                     d, summary_net=self.model.summary_net, device=self.device, exp_cfg=self.cfg,
-                    dataset_cfg=dcfg, augment=augment
+                    dataset_cfg=dcfg, augment=augment, use_amp=tcfg.use_amp
                 )
 
                 if augment:
