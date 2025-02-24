@@ -55,6 +55,9 @@ class Trainer:
             self.model.trainable_parameters, lr=self.cfg.lr, **self.cfg.optimizer.kwargs
         )
 
+        # init scaler
+        self.scaler = torch.amp.GradScaler(enabled=self.cfg.use_amp)
+
         # init scheduler
         self.steps_per_epoch = len(self.dataloaders["train"])
         if self.cfg.scheduler:
@@ -162,12 +165,13 @@ class Trainer:
                 batch[0] = augment(batch[0])
 
             # calculate batch loss
-            loss = self.model.batch_loss(batch)
+            with torch.autocast(self.device.type, enabled=self.cfg.use_amp):
+                loss = self.model.batch_loss(batch)
 
             # update model parameters
             step = itr + self.epoch * self.steps_per_epoch
             total_steps = self.cfg.epochs * self.steps_per_epoch
-            self.model.update(self.optimizer, loss, step, total_steps)
+            self.model.update(loss, self.optimizer, self.scaler, step, total_steps)
 
             # update learning rate
             if self.cfg.scheduler:
@@ -213,7 +217,8 @@ class Trainer:
             # place x on device
             batch = ensure_device_and_dtype(batch, self.device, self.dtype)
             # calculate loss
-            loss = self.model.batch_loss(batch).detach()
+            with torch.autocast(self.device.type, enabled=self.cfg.use_amp):
+                loss = self.model.batch_loss(batch)
             val_losses.append(loss)
 
         # track loss
@@ -231,6 +236,7 @@ class Trainer:
         """Save the model along with the training state"""
         state_dicts = {
             "opt": self.optimizer.state_dict(),
+            "scaler": self.scaler.state_dict(),
             "model": self.model.state_dict(),
             "losses": self.epoch_train_losses,
             "epoch": self.epoch,
@@ -242,7 +248,7 @@ class Trainer:
     def load(self, path):
         """Load the model and training state"""
 
-        state_dicts = torch.load(path, map_location=self.device)
+        state_dicts = torch.load(path, map_location=self.device, weights_only=False)
         self.model.load_state_dict(state_dicts["model"])
         if "losses" in state_dicts:
             self.epoch_train_losses = state_dicts.get("losses", {})
@@ -250,6 +256,8 @@ class Trainer:
             self.start_epoch = state_dicts.get("epoch", 0) + 1
         if "opt" in state_dicts:
             self.optimizer.load_state_dict(state_dicts["opt"])
+        if "scaler" in state_dicts:
+            self.scaler.load_state_dict(state_dicts["scaler"])
         if "scheduler" in state_dicts:
             self.scheduler.load_state_dict(state_dicts["scheduler"])
         self.model.net.to(self.device)

@@ -359,7 +359,9 @@ class PretrainedViT(ViT):
         bcfg = get_prev_config(bb_dir)
 
         # load backbone state
-        model_state = torch.load(os.path.join(bb_dir, "model.pt"))["model"]
+        model_state = torch.load(os.path.join(bb_dir, "model.pt"), weights_only=False)[
+            "model"
+        ]
         net_state = {
             k.replace("net.", ""): v
             for k, v in model_state.items()
