@@ -1,5 +1,5 @@
 scheduler: slurm
-queue: gpu-a100
+queue: a30
 mem: 24G
 time: '40:0:0'
 num_gpus: 1
