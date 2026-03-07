@@ -29,3 +29,13 @@ def load_model(path, model_cls=None, device=None, freeze=True):
 
     return model, cfg
 
+def ensure_device(x, device):
+    """Recursively send tensors within nested structure to device"""
+    if isinstance(x, list):
+        return [ensure_device(e, device) for e in x]
+    if isinstance(x, tuple):
+        return tuple(ensure_device(e, device) for e in x)
+    elif x.device != device:
+        return x.to(device=device, non_blocking=True)
+    return x
+        

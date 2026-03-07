@@ -98,13 +98,12 @@ class TrainingExperiment(BaseExperiment):
 
         dcfg = self.cfg.data
         tcfg = self.cfg.training
+        dscfg = self.cfg.dataset
 
         # read data
         dset = LightconeData.from_memmap(
-            dcfg.dir,
-            shapes=dict(
-                label=[self.cfg.dataset.num_params], image=self.cfg.dataset.image_shape
-            ),
+            dscfg.dir,
+            shapes=dict(label=[dscfg.num_params], image=dscfg.image_shape),
             num_workers=dcfg.num_workers,
         )
 
@@ -137,7 +136,7 @@ class TrainingExperiment(BaseExperiment):
                     shuffle=is_train_split,
                     drop_last=is_train_split,
                     batch_size=batch_size,
-                    collate_fn=self.collate_fn,  # TODO: Use different function for train/test to handle augmentations/masking
+                    collate_fn=self.get_collator(training=is_train_split),
                     num_workers=num_workers,
                     pin_memory=self.cfg.use_gpu and not on_gpu,
                     multiprocessing_context="spawn" if use_mp else None,
@@ -173,9 +172,9 @@ class TrainingExperiment(BaseExperiment):
                 augs.append(aug)
         return augs
 
-    def collate_fn(self, batch: LightconeData):
+    def get_collator(self):
         """Perform experiment-specific collation. Can help to avoid CPU-GPU sync during training."""
-        return batch
+        return IdentityCollator()
 
     @abstractmethod
     def init_dataset(self, path_exp, path_sim):

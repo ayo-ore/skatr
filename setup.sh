@@ -6,14 +6,13 @@ export SKATR_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && 
 # modules
 ml purge
 ml cuda/12.8 cudnn/11.6 anaconda/3.0
-source activate skatr
 
 # conda
 eval "$(conda shell.bash hook)"
-conda activate deep # aussie
+conda activate skatr
 
 # auto completion
-eval "$(python aussie.py -sc install=bash)"
+eval "$(python main.py -sc install=bash)"
 
 # complete stacktrace
 export HYDRA_FULL_ERROR=1

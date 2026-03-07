@@ -10,6 +10,8 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from typing import Dict
 
+from src.utils.utils import ensure_device
+
 log = logging.getLogger("Trainer")
 
 
@@ -301,15 +303,3 @@ class Trainer:
                     optimizer=self.optimizer,
                     # total_iters=total_steps,
                 )
-
-
-def ensure_device(x, device):
-    """Recursively send tensors within nested structure to device"""
-    if isinstance(x, list):
-        return [ensure_device(e, device) for e in x]
-    if isinstance(x, tuple):
-        return tuple(ensure_device(e, device) for e in x)
-    elif x.device != device:
-        return x.to(device=device, non_blocking=True)
-    return x
-        

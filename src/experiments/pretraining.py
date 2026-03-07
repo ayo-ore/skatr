@@ -1,9 +1,8 @@
 import torch
 
-from src import models
 from src.experiments.training import TrainingExperiment
-from src.utils.dataset import LightconeData
-from src.utils.masks import jepa_mask
+from src.utils.collators import JEPACollator
+
 
 class PretrainingExperiment(TrainingExperiment):
 
@@ -25,26 +24,22 @@ class PretrainingExperiment(TrainingExperiment):
     # def get_model(self):
     #     model_cls = getattr(models, self.cfg.model)
     #     return model_cls(self.cfg)
-    
-    def collate_fn(self, batch):
+
+    def get_collator(self):
         """Perform preprocessing and masking on CPU. Avoids GPU sync during training."""
 
-        # preprocess images
-        for transform in self.preprocessing["x"]:
-            batch.images = transform.forward(batch.images)
-
-        num_patches = self.model.net.num_patches
-        
-        # sample masks
-        tgt_masks, ctx_masks = jepa_mask(
-            num_patches, self.cfg.masking, batch_size=len(batch), device=batch.device
+        num_patches = tuple(
+            s // p
+            for s, p in zip(self.cfg.dataset.image_shape, self.cfg.net.patch_shape)
         )
 
-        return batch.images, tgt_masks, ctx_masks
-    
+        mask_cfg = self.cfg.masking
+
+        return JEPACollator(self.preprocessing, num_patches, mask_cfg)
+
     @torch.inference_mode()
     def evaluate(self, dataloaders):
         pass
-    
+
     def plot(self):
-        pass    
+        pass

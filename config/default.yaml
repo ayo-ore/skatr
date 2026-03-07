@@ -6,7 +6,6 @@ evaluate: True
 plot: True
 
 use_gpu: True
-num_cpus: 0
 device: 0
 use_tf32: True
 use_amp: False
@@ -21,7 +20,7 @@ data:
   test_frac: 0.15
   sequential_splits: False
   on_gpu: False
-  num_workers: 0
+  num_workers: 4
   use_test_dir: False
   summarize: False
   summary_batch_size: 150
@@ -53,6 +52,6 @@ training:
 summary_net: null
 
 defaults:
-  - cluster: pbs
+  - cluster: slurm
   - hydra
   - _self_

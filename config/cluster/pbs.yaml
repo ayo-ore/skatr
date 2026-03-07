@@ -1,6 +1,5 @@
 scheduler: pbs
 queue: a30
-procs: ${num_cpus}
 mem: 24gb
 vmem: 72gb
 time: '40:0:0'

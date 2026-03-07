@@ -6,9 +6,9 @@ from matplotlib import gridspec
 from matplotlib.backends.backend_pdf import PdfPages
 
 from src.experiments.training import TrainingExperiment
-from src.models import Regressor, GaussianRegressor
+from src.utils.collators import SupervisedCollator
 from src.utils.plotting import PARAM_NAMES
-
+from src.utils.utils import ensure_device
 
 class RegressionExperiment(TrainingExperiment):
 
@@ -26,19 +26,9 @@ class RegressionExperiment(TrainingExperiment):
     # def get_model(self):
     # return (GaussianRegressor if self.cfg.gaussian else Regressor)(self.cfg)
 
-    def collate_fn(self, batch):
-        """Perform experiment-specific collation. Can help to avoid CPU-GPU sync during training."""
-
-        for transform in self.preprocessing["x"]:
-            batch.images = transform.forward(batch.images)
-
-        for transform in self.preprocessing["y"]:
-            batch.labels = transform.forward(batch.labels)
-
-        for aug in self.augmentations:
-            batch.images = aug(batch.images)
-
-        return batch
+    def get_collator(self, training):
+        """Perform preprocessing and masking on CPU. Avoids GPU sync during training."""
+        return SupervisedCollator(self.preprocessing, self.augmentations, training)
 
     @property
     def gaussian(self):
@@ -58,8 +48,9 @@ class RegressionExperiment(TrainingExperiment):
         labels, preds, stds = [], [], []
         for batch in dataloader:
 
-            # predict
+            batch = ensure_device(batch, self.device)
 
+            # predict
             if self.gaussian:
                 pred, std = self.model.predict(batch.images)
                 pred = pred.detach().cpu()
@@ -75,22 +66,19 @@ class RegressionExperiment(TrainingExperiment):
             # append prediction
             preds.append(pred.numpy())
             labels.append(batch.labels.cpu().numpy())
-            if self.cfg.gaussian:
+            if self.gaussian:
                 stds.append(std.numpy())
 
         # stack results
         labels = np.vstack(labels)
         preds = np.vstack(preds)
-        if self.cfg.gaussian:
+        if self.gaussian:
             stds = np.vstack(stds)
 
         # save results
         savearrs = [labels, preds]
-        if self.cfg.gaussian:
+        if self.gaussian:
             savearrs.append(stds)
-
-            for a in savearrs:
-                print(a.shape)
 
         savepath = os.path.join(self.exp_dir, "label_pred_pairs.npy")
         self.log.info(f"Saving label/prediction pairs to {savepath}")
@@ -142,7 +130,7 @@ class RegressionExperiment(TrainingExperiment):
                 ratio_ax = plt.subplot(grid[1])
 
                 # unpack labels/preds and calculate metric
-                if self.cfg.gaussian:
+                if self.gaussian:
                     labels, preds, sigmas = label_pred_pairs[:, i].T
                 else:
                     labels, preds = label_pred_pairs[:, i].T
@@ -159,7 +147,7 @@ class RegressionExperiment(TrainingExperiment):
                 mare_partitions = [mares[bin_idcs == i + 1] for i in range(num_bins)]
                 MARE = mares.mean()
 
-                if self.cfg.gaussian:
+                if self.gaussian:
                     errs = [
                         sigmas[bin_idcs == i + 1] * (hi - lo) for i in range(num_bins)
                     ]

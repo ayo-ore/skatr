@@ -1,0 +1,4 @@
+name: hrds
+dir: /remote/jerry/nordman/data_new/x5
+image_shape: [28, 28, 470]
+num_params: 6
