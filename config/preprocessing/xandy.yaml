@@ -11,5 +11,5 @@ y:
     _target_: src.utils.transforms.Center,
     lo: [0.55, 0.20, 100., 38., 4.0, 10.6],
     hi: [10.0, 0.40, 1500., 42., 5.3, 250.],
-    indices: "${target_indices}"
+    indices: "${data.target_indices}"
   }

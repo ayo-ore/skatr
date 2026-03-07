@@ -1,6 +1,8 @@
 import random
 import torch
 
+# TODO: Add cyclic roll
+
 
 class RotateAndReflect:
     """Random rotation + reflection, avoiding double counting."""

@@ -1,4 +1,4 @@
-arch: INN
+_target_: INN
 dim: 6
 cond_dim: 144
 num_blocks: 6

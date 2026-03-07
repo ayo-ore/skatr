@@ -1,0 +1,50 @@
+run_name: pretraining_micro
+experiment:
+  _target_: src.experiments.PretrainingExperiment
+evaluate: False
+plot: False
+
+model:
+  _target_: src.models.JEPA
+
+ema_momentum: 0.9997
+momentum_schedule: True
+sim: l1
+augment: False
+init_tgt_as_ctx: True
+
+net: # encoders
+  use_mask_token: False
+  use_head: False
+  hidden_dim: 144
+  depth: 4
+
+predictor:
+  _target_: src.networks.PredictorViT
+  use_head: False
+  hidden_dim: 48
+  depth: 4
+  learn_pos_encoding: False
+  in_dim: ${net.hidden_dim}
+  in_shape: ${net.in_shape}
+  patch_shape: ${net.patch_shape}
+
+data:
+  dir: /scratch/nordmann/data_new/x5
+  use_test_dir: True
+
+training:
+  epochs: 1000
+  lr: 0.001
+  batch_size: 64
+  optimizer:
+    weight_decay: 0.0
+
+defaults:
+  - default
+  - dataset: micro
+  - masking: multiblock
+  - net: vit_micro
+  - net@predictor: vit_micro
+  - preprocessing: xonly  
+  - _self_

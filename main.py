@@ -2,15 +2,16 @@
 
 import hydra
 import importlib
+import os
 import logging
 from hydra.core.hydra_config import HydraConfig
+from hydra.utils import call
 from omegaconf import DictConfig
 
 from src.utils.cluster import submit
 from src.utils.config import update_config_from_prev, check_cfg
 
 log = logging.getLogger("SKATR")
-
 
 @hydra.main(config_path="config", config_name="rerun", version_base=None)
 def main(cfg: DictConfig):
@@ -23,6 +24,7 @@ def main(cfg: DictConfig):
 
     # resolve config if loading previous experiment
     if cfg.prev_exp_dir:
+        assert os.path.exists(exp_dir)
         cfg = update_config_from_prev(cfg, hcfg, exp_dir)
 
     # check cfg
@@ -34,9 +36,7 @@ def main(cfg: DictConfig):
         return
 
     # select and run experiment
-    experiments = importlib.import_module("src.experiments")
-    exp_cls = getattr(experiments, cfg.experiment)
-    experiment = exp_cls(cfg, exp_dir)
+    experiment = call(cfg.experiment, cfg, exp_dir)
     experiment.run()
 
 

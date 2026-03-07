@@ -1,6 +1,7 @@
 import copy
 import torch
 import torch.nn.functional as F
+from hydra.utils import instantiate
 from omegaconf import DictConfig
 
 from src import networks
@@ -12,12 +13,12 @@ class JEPA(Model):
 
     def __init__(self, cfg: DictConfig):
         super().__init__(cfg)
-        self.predictor = networks.PredictorViT(cfg.predictor)
+        self.predictor = instantiate(cfg.predictor)
         self.ctx_encoder = self.net
         self.tgt_encoder = (
             copy.deepcopy(self.ctx_encoder)
             if cfg.init_tgt_as_ctx
-            else self.net.__class__(cfg.net)
+            else instantiate(cfg.net)
         )
         self.augment = augmentations.RotateAndReflect()
 
@@ -31,26 +32,18 @@ class JEPA(Model):
 
     def batch_loss(self, batch):
 
-        # augment batch
-        x1 = batch[0]
-        x2 = self.augment(x1) if self.cfg.augment else x1
-
-        # sample masks
-        num_patches = self.ctx_encoder.num_patches
-        tgt_masks, ctx_masks = masks.JEPA_mask(
-            num_patches, self.cfg.masking, batch_size=x2.size(0), device=x2.device
-        )
+        images, tgt_masks, ctx_masks = batch
 
         # get target token embeddings
         with torch.no_grad():
-            tgt_tokens = self.tgt_encoder(x1)
+            tgt_tokens = self.tgt_encoder(images)
 
         loss = 0.0
         for ctx_mask, tgt_mask in zip(ctx_masks, tgt_masks):
             # WARNING: Assumes each target mask has it's own context. Repeat ctx_mask otherwise
 
             # get context token embeddings and predict
-            ctx_tokens = self.ctx_encoder(x2, mask=ctx_mask)
+            ctx_tokens = self.ctx_encoder(images, mask=ctx_mask)
             prd_tokens = self.predictor(ctx_tokens, ctx_mask, tgt_mask)
 
             # keep only target tokens in current block

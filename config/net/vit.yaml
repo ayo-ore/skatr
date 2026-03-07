@@ -1,5 +1,5 @@
-arch: ViT
-in_shape: [1, 140, 140, 2350]
+_target_: src.networks.ViT
+in_shape: ${dataset.image_shape}
 out_channels: 6
 
 patch_shape: [7, 7, 94]
@@ -27,7 +27,7 @@ head:
     out_act: ${net.out_act}
     drop: ${net.mlp_drop}
 
-adapt_res: False
+use_adaptor: False
 adaptor:
   channels: 4
   downsample_factor: 5

@@ -1,28 +1,27 @@
 run_name: ???
-experiment: ???
+experiment:
+  _target_: ???
 train: True
 evaluate: True
 plot: True
 
-proj_dir: /remote/gpu02/ore/skatr
 use_gpu: True
 num_cpus: 0
 device: 0
-use_tf32: False
+use_tf32: True
+use_amp: False
 submit: False
 dry_run: False
 
 prev_exp_dir: null
 
 data:
-  dir: /scratch2/heneka/21cmlightcones/pure_simulations/
-  splits:
-    train: 0.75
-    test: 0.15
+  dir: ???
+  val_frac: 0.10
+  test_frac: 0.15
   sequential_splits: False
-  dtype: float32
   on_gpu: False
-  file_by_file: True
+  num_workers: 0
   use_test_dir: False
   summarize: False
   summary_batch_size: 150
@@ -33,11 +32,10 @@ training:
   batch_size: 32
   test_batch_size: 200
   optimizer:
-    name: AdamW
-    kwargs: {weight_decay: 1.e-3}
+    _target_: torch.optim.AdamW
+    weight_decay: 1.e-3
   use_amp: False
   scheduler: {}
-  dtype: float32
   augment: True
   augmentations:
     RotateAndReflect: {include_identity: True}

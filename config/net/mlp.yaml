@@ -1,4 +1,4 @@
-arch: MLP
+_target_: src.networks.MLP
 units: [5, 100, 1]
 act: relu
 out_act: null

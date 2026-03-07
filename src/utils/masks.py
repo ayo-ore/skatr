@@ -2,22 +2,22 @@ import math
 import torch
 
 
-def patch_mask(num_patches, cfg, batch_size, device):
-    """
-    :param num_patches: iterable containing the number of patches per dimension
+# def patch_mask(num_patches, cfg, batch_size, device):
+#     """
+#     :param num_patches: iterable containing the number of patches per dimension
 
-    Returns a tensor with shape (B [batch size], K ]) containing random indices in the range [0,T)
-    with T = prod(num_patches) and K = T * cfg.mask_frac.
-    """
-    # get total number of patches
-    T = math.prod(num_patches)
-    # get number of patches to be masked
-    num_masked = int(cfg.mask_frac * T)
-    # uniformly sample `num_masked` integers per batch
-    mask_idcs = (
-        torch.rand(batch_size, T, device=device).topk(k=num_masked, dim=-1).indices
-    )
-    return mask_idcs
+#     Returns a tensor with shape (B [batch size], K ]) containing random indices in the range [0,T)
+#     with T = prod(num_patches) and K = T * cfg.mask_frac.
+#     """
+#     # get total number of patches
+#     T = math.prod(num_patches)
+#     # get number of patches to be masked
+#     num_masked = int(cfg.mask_frac * T)
+#     # uniformly sample `num_masked` integers per batch
+#     mask_idcs = (
+#         torch.rand(batch_size, T, device=device).topk(k=num_masked, dim=-1).indices
+#     )
+#     return mask_idcs
 
 
 # def collated_block_mask(num_patches, cfg, batch_size, device):
@@ -37,7 +37,7 @@ def patch_mask(num_patches, cfg, batch_size, device):
 #     return torch.utils.data.default_collate(batch)
 
 
-def JEPA_mask(num_patches, cfg, batch_size, device):
+def jepa_mask(num_patches, cfg, batch_size, device):
     """
     :cfg.num_targets: Number of targets to predict
 

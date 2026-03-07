@@ -1,5 +1,5 @@
-arch: ViT
-in_shape: [1, 28, 28, 470]
+_target_: src.networks.ViT
+in_shape: ${dataset.image_shape}
 out_channels: 6
 # patch_shape: [7, 7, 47] # 10 x 10 x 25 = 2500 tokens with 7x7x47 = 2300 voxels
 patch_shape: [4, 4, 10] # 7 x 7 x 47 = 2303 tokens with 4*4*10 = 160 voxels
@@ -27,7 +27,7 @@ head:
     out_act: ${net.out_act}
     drop: ${net.mlp_drop}
 
-adapt_res: False
+use_adaptor: False
 adaptor:
   channels: 4
   downsample_factor: 5

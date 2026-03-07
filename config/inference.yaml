@@ -1,5 +1,6 @@
-run_name: inference_${summary_net.arch}
-experiment: InferenceExperiment
+run_name: inference_${dataset.name}
+experiment:
+  _target_: src.experiments.InferenceExperiment
 
 dim: 6
 summary_dim: 96
@@ -9,7 +10,8 @@ num_test_points: 250
 num_posterior_samples: 5000
 sample_batch_size: 1000
 
-generative_model: INN
+model:
+  _target_: src.models.INN
 inn:
   num_blocks: 6
   layers_per_block: 2

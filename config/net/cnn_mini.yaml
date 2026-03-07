@@ -1,4 +1,4 @@
-arch: CNN
+_target_: src.networks.CNN
 in_channels: 1
 hidden_channels: 32
 out_channels: 6

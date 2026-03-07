@@ -1,4 +1,4 @@
-arch: AttentiveHead
+_target_: AttentiveHead
 embed_dim: 144
 num_heads: 6
 mlp_ratio: 2.0

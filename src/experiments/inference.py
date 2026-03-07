@@ -12,23 +12,16 @@ from scipy.ndimage import gaussian_filter
 from torch.utils.data import DataLoader
 
 from src import models
-from src.experiments.base_experiment import BaseExperiment
-from src.utils import datasets
+from src.experiments.training import TrainingExperiment
+from src.utils.dataset import LightconeData
 from src.utils.plotting import PARAM_NAMES
 
 
-class InferenceExperiment(BaseExperiment):
+class InferenceExperiment(TrainingExperiment):
 
-    def get_dataset(self, directory):
-        prep = self.preprocessing
-        if self.cfg.data.file_by_file:
-            return datasets.LCDatasetByFile(
-                self.cfg.data, directory, preprocessing=prep
-            )
-        else:
-            return datasets.LCDataset(
-                self.cfg.data, directory, self.device, preprocessing=prep
-            )
+    # def get_dataset(self, directory):
+    #     prep = self.preprocessing
+    #     return LightconeData.from_memmap(directory)
 
     def get_model(self):
 
@@ -59,7 +52,7 @@ class InferenceExperiment(BaseExperiment):
         # pull data from the test set
         test_lcs, params = next(iter(dataloaders["test"]))
         test_lcs = test_lcs[: self.cfg.num_test_points]
-        params = params[: self.cfg.num_test_points].to(self.device, self.dtype_train)
+        params = params[: self.cfg.num_test_points]
 
         # loop over test lcs in batches
         for j, (lc_batch, param_batch) in enumerate(
@@ -68,9 +61,6 @@ class InferenceExperiment(BaseExperiment):
                 DataLoader(params, self.cfg.sample_batch_size),
             )
         ):
-
-            # move batch to gpu
-            lc_batch = lc_batch.to(self.device, self.dtype_train)
 
             # summarize
             lc_batch = self.model.summarize(lc_batch)
@@ -115,7 +105,7 @@ class InferenceExperiment(BaseExperiment):
             params = transform.reverse(params)
 
         # collect true parameters
-        target_indices = sorted(self.cfg.target_indices)
+        target_indices = sorted(self.cfg.data.target_indices)
         params = params[: self.cfg.num_test_points, target_indices]
 
         # save results
@@ -137,7 +127,7 @@ class InferenceExperiment(BaseExperiment):
         params = record["params"]
         colors = ["navy", "royalblue"]
 
-        param_names = [PARAM_NAMES[i] for i in sorted(self.cfg.target_indices)]
+        param_names = [PARAM_NAMES[i] for i in sorted(self.cfg.data.target_indices)]
         N = len(param_names)
 
         # posterior

@@ -5,9 +5,10 @@ import time
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig
+from hydra.utils import instantiate
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from typing import Callable, Dict, List
+from typing import Dict
 
 log = logging.getLogger("Trainer")
 
@@ -18,18 +19,14 @@ class Trainer:
         self,
         model: nn.Module,
         dataloaders: Dict[str, DataLoader],
-        preprocessing: Dict[str, List[Callable]],
-        augmentations: List[Callable],
         cfg: DictConfig,
         exp_dir: str,
         device: torch.device,
-        dtype: torch.dtype,
+        use_amp=False,
     ):
         """
         model           -- a pytorch model to be trained
         dataloaders     -- a dictionary containing pytorch data loaders at keys 'train' and 'val'
-        preprocessing   -- A dictinoary containing a list of transformations for each element in
-                           the batch tuple. Processing is applied at each training iteration
         cfg             -- configuration dictionary
         exp_dir         -- directory to which training outputs will be saved
         """
@@ -37,11 +34,10 @@ class Trainer:
         self.model = model
         self.dataloaders = dataloaders
         self.cfg = cfg
-        self.device = device
-        self.dtype = dtype
         self.exp_dir = exp_dir
-        self.preprocessing = preprocessing
-        self.augmentations = augmentations
+        self.device = device
+        self.use_amp = use_amp
+
         self.start_epoch = 0
         self.patience_counter = 0
 
@@ -50,13 +46,12 @@ class Trainer:
         log.info("Preparing model training")
 
         # init optimizer
-        opt_cls = getattr(torch.optim, self.cfg.optimizer.name)
-        self.optimizer = opt_cls(
-            self.model.trainable_parameters, lr=self.cfg.lr, **self.cfg.optimizer.kwargs
+        self.optimizer = instantiate(
+            self.cfg.optimizer, params=self.model.trainable_parameters, lr=self.cfg.lr
         )
 
         # init scaler
-        self.scaler = torch.amp.GradScaler(enabled=self.cfg.use_amp)
+        self.scaler = torch.amp.GradScaler(enabled=self.use_amp)
 
         # init scheduler
         self.steps_per_epoch = len(self.dataloaders["train"])
@@ -79,8 +74,11 @@ class Trainer:
             path = os.path.join(self.exp_dir, checkpoint)
             self.load(path)
             # avoid overriding checkpoint
-            os.rename(path, path.replace(".pt", f"_old.pt"))
+            os.rename(path, path.replace(".pt", "_old.pt"))
             log.info(f"Warm starting training from epoch {self.start_epoch}")
+
+        # compile model
+        self.model = torch.compile(self.model)
 
     def run_training(self):
 
@@ -91,19 +89,17 @@ class Trainer:
         if self.cfg.patience:
             log.info(f"Early stopping patience set to {self.cfg.patience}")
 
-        t_0 = time.time()
+        t0_total = time.time()
         for e in range(num_epochs):
 
-            t0 = time.time()
             self.epoch = (self.start_epoch or 0) + e
 
             # train
-            self.model.net.train()
             self.train_one_epoch()
 
             # validate at given frequency
             if (self.epoch + 1) % self.cfg.validate_freq == 0:
-                self.model.eval()
+
                 self.validate_one_epoch()
 
                 # check whether validation loss improved
@@ -127,14 +123,14 @@ class Trainer:
 
             # estimate training time
             if e == 0:
-                t1 = time.time()
-                dtEst = (t1 - t0) * num_epochs
+                t0_epoch = time.time()
+            if e == 1:
+                dtEst = (time.time() - t0_epoch) * num_epochs
                 log.info(
                     f"Training time estimate: {dtEst/60:.2f} min = {dtEst/60**2:.2f} h"
                 )
 
-        t_1 = time.time()
-        traintime = t_1 - t_0
+        traintime = time.time() - t0_total
         log.info(
             f"Finished training {self.epoch + 1} epochs after {traintime:.2f} s"
             f" = {traintime / 60:.2f} min = {traintime / 60 ** 2:.2f} h."
@@ -143,10 +139,16 @@ class Trainer:
         # save final model
         if not self.cfg.save_best_epoch:
             log.info("Saving final model")
-            self.model.eval()
             self.save()
 
     def train_one_epoch(self):
+
+        # set modules to training mode
+        self.model.train()  # NOTE: Ensure frozen submodules are set to eval mode each batch!
+        try:
+            self.optimizer.train()
+        except AttributeError:
+            pass
 
         # create list to save loss per iteration
         train_losses = []
@@ -154,15 +156,10 @@ class Trainer:
         # iterate batch wise over input
         for itr, batch in enumerate(self.dataloaders["train"]):
 
-            # place batch on device
-            batch = ensure_device_and_dtype(batch, self.device, self.dtype)
-
-            # augment
-            for augment in self.augmentations:
-                batch[0] = augment(batch[0])
+            batch = ensure_device(batch, self.device)
 
             # calculate batch loss
-            with torch.autocast(self.device.type, enabled=self.cfg.use_amp):
+            with torch.autocast(self.device.type, enabled=self.use_amp):
                 loss = self.model.batch_loss(batch)
 
             # update model parameters
@@ -177,14 +174,19 @@ class Trainer:
             # track loss
             train_losses.append(loss.detach())
             if self.cfg.use_tensorboard and (not step % self.cfg.log_iters) or not step:
+                iter_loss = torch.stack(train_losses[-self.cfg.log_iters :])
                 self.summarizer.add_scalar(
                     "iter_loss_train",
-                    torch.stack(train_losses[-self.cfg.log_iters :])
-                    .mean()
-                    .cpu()
-                    .numpy(),
+                    iter_loss.mean().cpu().numpy(),
                     step,
                 )
+                for k, v in self.model.log_buffer.items():  # model scalars
+                    self.summarizer.add_scalar(
+                        k,
+                        torch.stack(v).mean().cpu().numpy(),
+                        step,
+                    )
+                self.model.log_buffer.clear()
 
         # track loss
         self.epoch_train_losses = np.append(
@@ -201,22 +203,24 @@ class Trainer:
                     "learning_rate", self.scheduler.get_last_lr()[0], self.epoch
                 )
 
-    @torch.inference_mode()
+    @torch.no_grad()
     def validate_one_epoch(self):
+
+        # set modules to evaluation mode
+        self.model.eval()
+        try:
+            self.optimizer.eval()
+        except AttributeError:
+            pass
 
         # calculate loss batchwise over input
         val_losses = []
         for batch in self.dataloaders["val"]:
 
-            # augment
-            if self.cfg.augment_test:
-                for augment in self.augmentations:
-                    batch[0] = augment(batch[0])
+            batch = ensure_device(batch, self.device)
 
-            # place x on device
-            batch = ensure_device_and_dtype(batch, self.device, self.dtype)
             # calculate loss
-            with torch.autocast(self.device.type, enabled=self.cfg.use_amp):
+            with torch.autocast(self.device.type, enabled=self.use_amp):
                 loss = self.model.batch_loss(batch)
             val_losses.append(loss.detach())
 
@@ -233,11 +237,22 @@ class Trainer:
 
     def save(self, tag=""):
         """Save the model along with the training state"""
+
+        # set modules to evaluation mode
+        self.model.eval()
+        try:
+            self.optimizer.eval()
+        except AttributeError:
+            pass
+
+        model_dict = {
+            k.replace("_orig_mod.", ""): v for k, v in self.model.state_dict().items()
+        }
         state_dicts = {
             "opt": self.optimizer.state_dict(),
-            "scaler": self.scaler.state_dict(),
-            "model": self.model.state_dict(),
-            "losses": self.epoch_train_losses,
+            "model": model_dict,
+            "train_losses": self.epoch_train_losses,
+            "val_losses": self.epoch_val_losses,
             "epoch": self.epoch,
         }
         if self.cfg.scheduler:
@@ -249,45 +264,52 @@ class Trainer:
 
         state_dicts = torch.load(path, map_location=self.device, weights_only=False)
         self.model.load_state_dict(state_dicts["model"])
-        if "losses" in state_dicts:
-            self.epoch_train_losses = state_dicts.get("losses", {})
+        if "train_losses" in state_dicts:
+            self.epoch_train_losses = state_dicts.get("train_losses", {})
+        if "val_losses" in state_dicts:
+            self.epoch_val_losses = state_dicts.get("val_losses", {})
+            if len(self.epoch_val_losses) > 0:
+                self.best_val_loss = self.epoch_val_losses.min()
         if "epoch" in state_dicts:
             self.start_epoch = state_dicts.get("epoch", 0) + 1
         if "opt" in state_dicts:
             self.optimizer.load_state_dict(state_dicts["opt"])
-        if "scaler" in state_dicts:
-            self.scaler.load_state_dict(state_dicts["scaler"])
         if "scheduler" in state_dicts:
             self.scheduler.load_state_dict(state_dicts["scheduler"])
         self.model.net.to(self.device)
 
     def init_scheduler(self):
-        name = self.cfg.scheduler.name
-        sdl_cls = getattr(torch.optim.lr_scheduler, name)
+        scfg = self.cfg.scheduler
+        name = scfg._target_
         total_steps = self.cfg.epochs * self.steps_per_epoch
         match name:
-            case "OneCycleLR":
-                return sdl_cls(
-                    self.optimizer, total_steps=total_steps, **self.cfg.scheduler.kwargs
+            case "torch.optim.lr_scheduler.OneCycleLR":
+                return instantiate(
+                    scfg,
+                    optimizer=self.optimizer,
+                    total_steps=total_steps,
+                )
+            case "torch.optim.lr_scheduler.StepLR":
+                return instantiate(
+                    scfg,
+                    optimizer=self.optimizer,
+                    step_size=self.steps_per_epoch * scfg.step_size,
                 )
             case _:
-                return sdl_cls(
-                    self.optimizer, total_iters=total_steps, **self.cfg.scheduler.kwargs
+                return instantiate(
+                    scfg,
+                    optimizer=self.optimizer,
+                    # total_iters=total_steps,
                 )
 
 
-def ensure_device_and_dtype(x, device, dtype):
+def ensure_device(x, device):
     """Recursively send tensors within nested structure to device"""
     if isinstance(x, list):
-        return [ensure_device_and_dtype(e, device, dtype) for e in x]
+        return [ensure_device(e, device) for e in x]
     if isinstance(x, tuple):
-        return tuple(ensure_device_and_dtype(e, device, dtype) for e in x)
-    else:
-        if x.device == device and x.dtype == dtype:
-            return x
-        elif x.dtype == dtype:
-            return x.to(device)
-        elif x.device == device:
-            return x.to(dtype)
-        else:
-            return x.to(device=device, dtype=dtype)
+        return tuple(ensure_device(e, device) for e in x)
+    elif x.device != device:
+        return x.to(device=device, non_blocking=True)
+    return x
+        

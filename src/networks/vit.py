@@ -8,7 +8,7 @@ from einops.layers.torch import Rearrange
 from functools import partial
 from hydra.utils import instantiate
 from torch.utils.checkpoint import checkpoint
-
+from typing import List, Optional
 from src.utils import masks
 from src.utils.config import get_prev_config
 
@@ -18,64 +18,94 @@ class ViT(nn.Module):
     A vision transformer network.
     """
 
-    def __init__(self, cfg):
+    def __init__(
+        self,
+        in_shape: List[int] = [28, 28, 470],
+        out_channels: int = 6,
+        patch_shape: List[int] = [4, 4, 47],
+        hidden_dim: int = 96,
+        depth: int = 4,
+        num_heads: int = 4,
+        mlp_ratio: int = 2,
+        attn_drop: float = 0.0,
+        proj_drop: float = 0.0,
+        mlp_drop: float = 0.0,
+        learn_pos_encoding: bool = True,
+        out_act: str = "sigmoid",
+        use_mask_token: bool = True,
+        checkpoint_grads: bool = False,
+        use_head: bool = False,
+        head: Optional[nn.Module] = None,
+        use_adaptor: bool = False,
+        adaptor: Optional[nn.Module] = None,
+        use_input_conv: bool = False,
+        input_conv: Optional[nn.Module] = None,
+        in_dim: Optional[int] = None
+    ):
 
         super().__init__()
 
-        self.cfg = cfg
-        self.patch_shape = cfg.patch_shape
-        in_channels, *axis_sizes = cfg.in_shape
-        dim = cfg.hidden_dim
+        self.patch_shape = patch_shape
+        in_channels = 1
+        axis_sizes = tuple(in_shape)
+        # in_channels, *axis_sizes = in_shape
+        self.hidden_dim = hidden_dim
+        self.out_channels = out_channels
 
         # check consistency of arguments
-        check_shapes(cfg)
+        check_shapes(in_shape, patch_shape, hidden_dim)
 
         # embedding layer
-        self.patch_dim = math.prod(cfg.patch_shape) * in_channels
-        self.embedding = nn.Linear(self.patch_dim, dim)
-
+        self.patch_dim = math.prod(patch_shape) * in_channels
+        self.embedding = nn.Linear(self.patch_dim, hidden_dim)
+        
         # position encoding
-        fourier_dim = dim // 6  # sin/cos features for each dim
+        fourier_dim = hidden_dim // 6  # sin/cos features for each dim
         w = torch.arange(fourier_dim) / (fourier_dim - 1)
         w = (1.0 / (10_000**w)).repeat(3)
         self.pos_encoding_freqs = nn.Parameter(
-            w.log() if cfg.learn_pos_encoding else w,
-            requires_grad=cfg.learn_pos_encoding,
+            w.log() if learn_pos_encoding else w,
+            requires_grad=learn_pos_encoding,
         )
         self.init_pos_grid(axis_sizes)
+        self.learn_pos_encoding = learn_pos_encoding
 
         # transformer stack
         self.blocks = nn.ModuleList(
             [
                 Block(
-                    dim,
-                    cfg.num_heads,
-                    mlp_ratio=cfg.mlp_ratio,
-                    mlp_drop=cfg.mlp_drop,
-                    checkpoint_grads=cfg.checkpoint_grads,
-                    attn_drop=cfg.attn_drop,
-                    proj_drop=cfg.proj_drop,
+                    hidden_dim,
+                    num_heads,
+                    mlp_ratio=mlp_ratio,
+                    mlp_drop=mlp_drop,
+                    checkpoint_grads=checkpoint_grads,
+                    attn_drop=attn_drop,
+                    proj_drop=proj_drop,
                 )
-                for _ in range(cfg.depth)
+                for _ in range(depth)
             ]
         )
 
         # norm layer
-        self.out_norm = nn.LayerNorm(dim, eps=1e-6)
+        self.out_norm = nn.LayerNorm(hidden_dim, eps=1e-6)
 
         # optionally initialize a task head, input pooling, or mask token
-        if cfg.use_head:
-            self.init_head(cfg.head)
-        if cfg.adapt_res:
-            self.init_adaptor(cfg.adaptor)
-        if cfg.use_input_conv:
-            self.init_input_conv(cfg.input_conv)
-        if self.cfg.use_mask_token:
-            self.mask_token = nn.Parameter(torch.randn(dim))
+        if use_head:
+            self.head = head
+            # self.init_head(head)
+        if use_adaptor:
+            # self.adaptor = adaptor
+            self.init_adaptor(adaptor)
+        if use_input_conv:
+            self.input_conv = input_conv
+            # self.init_input_conv(input_conv)
 
-    def init_head(self, cfg):
-        self.head = instantiate(cfg)
+        self.use_mask_token = use_mask_token
+        if use_mask_token:
+            self.mask_token = nn.Parameter(torch.randn(hidden_dim))
 
+        self.in_dim = in_dim # used by PredictorViT subclass
+    
     def init_adaptor(self, cfg):
 
         # downsampling conv
@@ -87,7 +117,7 @@ class ViT(nn.Module):
         use_relu = True
         if cfg.replace_embedding:
             self.embedding = nn.Linear(
-                cfg.channels * self.patch_dim, self.cfg.hidden_dim
+                cfg.channels * self.patch_dim, self.hidden_dim
             )
         elif cfg.extra_proj:
             self.extra_proj = nn.Linear(cfg.channels * self.patch_dim, self.patch_dim)
@@ -118,11 +148,11 @@ class ViT(nn.Module):
                 "(b nx ny nz) c X Y Z -> b (nx ny nz) (c X Y Z)",
                 **dict(zip(("nx", "ny", "nz"), self.num_patches)),
             ),
-            nn.Linear(cfg.conv_out_dim, self.cfg.hidden_dim),
+            nn.Linear(cfg.conv_out_dim, self.hidden_dim),
         )
 
     def init_pos_grid(self, axis_sizes):
-        self.num_patches = [s // p for s, p in zip(axis_sizes, self.cfg.patch_shape)]
+        self.num_patches = [s // p for s, p in zip(axis_sizes, self.patch_shape)]
         for i, n in enumerate(self.num_patches):  # axis values for each dim
             self.register_buffer(f"grid_{i}", torch.arange(n) * (2 * math.pi / n))
 
@@ -130,7 +160,7 @@ class ViT(nn.Module):
         grids = [getattr(self, f"grid_{i}") for i in range(3)]
         coords = torch.meshgrid(*grids, indexing="ij")
 
-        if self.cfg.learn_pos_encoding:
+        if self.learn_pos_encoding:
             freqs = self.pos_encoding_freqs.exp().chunk(3)
         else:
             freqs = self.pos_encoding_freqs.chunk(3)
@@ -166,7 +196,7 @@ class ViT(nn.Module):
             x = self.embedding(x)
 
         # apply mask and position encoding
-        if self.cfg.use_mask_token:
+        if self.use_mask_token:
             if mask is not None:
                 x = self.apply_mask_tokens(x, mask)
             x = x + self.pos_encoding()
@@ -213,13 +243,13 @@ class ViT(nn.Module):
 
 class PredictorViT(ViT):
 
-    def __init__(self, cfg):
+    def __init__(self, *args, **kwargs):
 
-        super().__init__(cfg)
+        super().__init__(*args, **kwargs)
 
         # override embedding layer # TODO: better way?
-        self.embedding = nn.Linear(cfg.in_dim, cfg.hidden_dim)
-        self.out_proj = nn.Linear(cfg.hidden_dim, cfg.in_dim)
+        self.embedding = nn.Linear(self.in_dim, self.hidden_dim)
+        self.out_proj = nn.Linear(self.hidden_dim, self.in_dim)
 
     def forward(self, ctx, ctx_mask, tgt_mask):
         """
@@ -425,11 +455,12 @@ class PretrainedViT(ViT):
             self.bb.init_pos_grid(cfg.data_shape)
 
 
-def check_shapes(cfg):
-    for i, (s, p) in enumerate(zip(cfg.in_shape[1:], cfg.patch_shape)):
+def check_shapes(in_shape: int, patch_shape: int, hidden_dim: int):
+
+    for i, (s, p) in enumerate(zip(in_shape, patch_shape)):
         assert (
             not s % p
         ), f"Input size ({s}) should be divisible by patch size ({p}) in axis {i}."
     assert (
-        not cfg.hidden_dim % 6
+        not hidden_dim % 6
     ), f"Hidden dim should be divisible by 6 (for fourier position embeddings)"

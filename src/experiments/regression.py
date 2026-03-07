@@ -5,31 +5,47 @@ import torch
 from matplotlib import gridspec
 from matplotlib.backends.backend_pdf import PdfPages
 
-from src.experiments.base_experiment import BaseExperiment
+from src.experiments.training import TrainingExperiment
 from src.models import Regressor, GaussianRegressor
-from src.utils import datasets
 from src.utils.plotting import PARAM_NAMES
 
 
-class RegressionExperiment(BaseExperiment):
+class RegressionExperiment(TrainingExperiment):
 
-    def get_dataset(self, directory):
-        prep = self.preprocessing
-        if self.cfg.data.file_by_file:
-            return datasets.LCDatasetByFile(
-                self.cfg.data, directory, preprocessing=prep
-            )
-        else:
-            return datasets.LCDataset(
-                self.cfg.data, directory, self.device, preprocessing=prep
-            )
+    # def get_dataset(self, directory):
+    #     prep = self.preprocessing
+    #     if self.cfg.data.file_by_file:
+    #         return LightconeDatasetByFile(
+    #             self.cfg.data, directory, preprocessing=prep
+    #         )
+    #     else:
+    #         return LightconeDataset(
+    #             self.cfg.data, directory, self.device, preprocessing=prep
+    #         )
 
-    def get_model(self):
-        return (GaussianRegressor if self.cfg.gaussian else Regressor)(self.cfg)
+    # def get_model(self):
+    # return (GaussianRegressor if self.cfg.gaussian else Regressor)(self.cfg)
 
+    def collate_fn(self, batch):
+        """Perform experiment-specific collation. Can help to avoid CPU-GPU sync during training."""
+
+        for transform in self.preprocessing["x"]:
+            batch.images = transform.forward(batch.images)
+
+        for transform in self.preprocessing["y"]:
+            batch.labels = transform.forward(batch.labels)
+
+        for aug in self.augmentations:
+            batch.images = aug(batch.images)
+
+        return batch
+
+    @property
+    def gaussian(self):
+        return self.model.net.out_channels == 2 * len(self.cfg.data.target_indices)
 
     @torch.inference_mode()
-    def evaluate(self, dataloaders):
+    def evaluate(self, dataloader):
         """
         Evaluates the regressor on lightcones in the test dataset.
         Predictions are saved alongside truth labels
@@ -40,26 +56,25 @@ class RegressionExperiment(BaseExperiment):
 
         # get truth targets and predictions across the test set
         labels, preds, stds = [], [], []
-        for x, y in dataloaders["test"]:
+        for batch in dataloader:
 
             # predict
-            x = x.to(self.device, self.dtype_train)
 
-            if self.cfg.gaussian:
-                pred, std = self.model.predict(x)
+            if self.gaussian:
+                pred, std = self.model.predict(batch.images)
                 pred = pred.detach().cpu()
                 std = std.detach().cpu()
             else:
-                pred = self.model.predict(x).detach().cpu()
+                pred = self.model.predict(batch.images).detach().cpu()
 
             # postprocess output
             for transform in reversed(self.preprocessing["y"]):
                 pred = transform.reverse(pred)
-                y = transform.reverse(y)
+                batch.labels = transform.reverse(batch.labels)
 
             # append prediction
             preds.append(pred.numpy())
-            labels.append(y.cpu().numpy())
+            labels.append(batch.labels.cpu().numpy())
             if self.cfg.gaussian:
                 stds.append(std.numpy())
 
@@ -81,15 +96,15 @@ class RegressionExperiment(BaseExperiment):
         self.log.info(f"Saving label/prediction pairs to {savepath}")
         np.save(savepath, np.stack(savearrs, axis=-1))
 
-
     def plot(self):
 
         # pyplot config
         plt.rcParams["font.family"] = "serif"
-        plt.rcParams["text.usetex"] = True
-        plt.rcParams["text.latex.preamble"] = (
-            r"\usepackage{amsmath}" r"\usepackage[bitstream-charter]{mathdesign}"
-        )
+        # plt.rcParams['text.usetex'] = True
+        # plt.rcParams['text.latex.preamble']=(
+        # r'\usepackage{amsmath}'
+        # r'\usepackage[bitstream-charter]{mathdesign}'
+        # )
 
         label_pred_pairs = np.load(os.path.join(self.exp_dir, "label_pred_pairs.npy"))
 
@@ -171,7 +186,7 @@ class RegressionExperiment(BaseExperiment):
                 ratio_ax.semilogy()
 
                 # axis labels
-                param_idx = self.cfg.target_indices[i]
+                param_idx = self.cfg.data.target_indices[i]
                 main_ax.set_title(PARAM_NAMES[param_idx], fontsize=14)
                 main_ax.set_ylabel("Network", fontsize=13)
                 ratio_ax.set_ylabel(

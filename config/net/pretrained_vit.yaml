@@ -1,4 +1,4 @@
-arch: PretrainedViT
+_target_: PretrainedViT
 backbone_dir: runs/pretraining_micro/huge_775
 frozen: True
 drop_head: True

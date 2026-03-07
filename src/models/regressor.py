@@ -7,13 +7,12 @@ from src.models.base_model import Model
 class Regressor(Model):
 
     def batch_loss(self, batch):
-        x, y = batch
-        y_pred = self(x)
+        preds = self(batch.images)
         match self.cfg.loss:
             case "l1":
-                loss = F.l1_loss(y, y_pred)
+                loss = F.l1_loss(batch.labels, preds)
             case "l2":
-                loss = F.mse_loss(y, y_pred)
+                loss = F.mse_loss(batch.labels, preds)
             case _:
                 raise ValueError(f"Unknown loss {self.cfg.loss}")
 
@@ -46,13 +45,11 @@ class GaussianRegressor(Regressor):
 
     def batch_loss(self, batch):
 
-        x, y = batch
-
-        mu, sigma = self(x)
+        mu, sigma = self(batch.images)
         # optionally fix sigma constant
         sigma = (1 - self.stop_sigma) * sigma + self.stop_sigma
         # gaussian likelihood
-        loss = 0.5 * ((y - mu) / sigma) ** 2 + sigma.log()
+        loss = 0.5 * ((batch.labels - mu) / sigma) ** 2 + sigma.log()
 
         return loss.mean()
 
@@ -64,12 +61,13 @@ class GaussianRegressor(Regressor):
 
     @torch.inference_mode()
     def predict(self, x):
-        return self(x)
+        return self.forward(x)
 
-    def update(self, optimizer, loss, step=None, total_steps=None):
+
+    def update(self, loss, optimizer, scaler, step=None, total_steps=None):
 
         # default update
-        super().update(optimizer, loss)
+        super().update(loss, optimizer, scaler)
 
         # enable variance
         if step / total_steps >= self.const_sigma_frac:
