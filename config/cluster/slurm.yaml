@@ -1,6 +1,8 @@
 scheduler: slurm
 queue: a30
+node: null
 mem: 24G
 time: '40:0:0'
 num_gpus: 1
+num_cpus: 8
 dependency: null

@@ -47,10 +47,10 @@ def get_submit_cmd_pbs(cfg, hcfg, overrides):
         #PBS -o {hcfg.runtime.output_dir}/pbs.log
         #PBS -j oe
         {dependency}
-        cd {os.environ['AUSSIE_DIR']}
+        cd {os.environ['SKATR_DIR']}
         source setup.sh
         export CUDA_VISIBLE_DEVICES={device}
-        python aussie.py -cn {hcfg.job.config_name} {' '.join(overrides)} 
+        python main.py -cn {hcfg.job.config_name} {' '.join(overrides)} 
         exit 0
         EOT
     """
@@ -66,14 +66,14 @@ def get_submit_cmd_moab(cfg, hcfg, overrides):
     cmd = dedent(
         f"""
         msub <<EOT
-        #MSUB -N aussie_{cfg.run_name}
+        #MSUB -N {cfg.run_name}
         #MSUB -l nodes=1:ppn={ccfg.procs}:gpus={num_gpus}
         #MSUB -l feature={ccfg.feature},pmem={ccfg.pmem},walltime={ccfg.time}
         #MSUB -o {hcfg.runtime.output_dir}/moab.log
         #MSUB -j oe
 	    cd {os.environ['AUSSIE_DIR']}
         source setup.sh
-        python aussie.py {' '.join(overrides)} -cn {hcfg.job.config_name}
+        python main.py {' '.join(overrides)} -cn {hcfg.job.config_name}
         exit 0
         EOT
     """
@@ -85,13 +85,13 @@ def get_submit_cmd_moab(cfg, hcfg, overrides):
 def get_submit_cmd_slurm(cfg, hcfg, overrides):
 
     ccfg = cfg.cluster
-    setup_cmd = f"cd {os.environ['AUSSIE_DIR']}; ./setup.sh"
-    script_cmd = f"python aussie.py -cn {hcfg.job.config_name} {' '.join(overrides)}"
+    setup_cmd = f"cd {os.environ['SKATR_DIR']}; ./setup.sh"
+    script_cmd = f"python main.py -cn {hcfg.job.config_name} {' '.join(overrides)}"
     num_cpus = max(cfg.num_cpus, ccfg.num_cpus)
     num_gpus = ccfg.num_gpus if cfg.use_gpu else 0
     cmd = (
         f"sbatch -p {ccfg.queue} --mem {ccfg.mem} -N 1 -c {num_cpus}"
-        f" --gres=gpu:{num_gpus} -t {ccfg.time} -J aussie_{cfg.run_name}"
+        f" --gres=gpu:{num_gpus} -t {ccfg.time} -J {cfg.run_name}"
         f' -o {hcfg.runtime.output_dir}/slurm.log --wrap "{setup_cmd}; {script_cmd}"'
     )
 
