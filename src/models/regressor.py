@@ -1,33 +1,47 @@
 import torch
 import torch.nn.functional as F
 
+from src import networks
 from src.models.base_model import Model
 
 
 class Regressor(Model):
 
-    def batch_loss(self, batch):
-        preds = self(batch.images)
-        match self.cfg.loss:
+    def __init__(self, net, loss="l1", summary_net=None, summarize=False):
+
+        super().__init__(net, summary_net)
+
+        self.summarize = summarize
+
+        match loss:
             case "l1":
-                loss = F.l1_loss(batch.labels, preds)
+                self.loss = F.l1_loss
             case "l2":
-                loss = F.mse_loss(batch.labels, preds)
+                self.loss = F.mse_loss
             case _:
-                raise ValueError(f"Unknown loss {self.cfg.loss}")
+                raise ValueError(f"Unknown loss {self.loss}")
 
-        return loss
+    def batch_loss(self, batch):
+        preds = self.forward(batch)
+        return self.loss(batch.labels, preds)
 
-    def forward(self, x):
+    def forward(self, batch):
 
-        if hasattr(self, "summary_net") and not self.cfg.data.summarize:
+        # if hasattr(self, "summary_net") and not self.cfg.data.summarize:
+        if self.summarize:
 
+            x = batch.images
             x = self.summary_net(x)
             # if not hasattr(self.bb, 'head') and self.net.cfg.arch == 'MLP': # weird...
             if (
                 not hasattr(self.summary_net, "head") and self.cfg.net.arch == "MLP"
             ):  # TODO: Clean
                 x = x.mean(1)  # (B, T, D) --> (B, D)
+
+        elif self.summary_net is not None:
+            x = batch.summaries
+        else:
+            x = batch.images
 
         return self.net(x)
 
@@ -62,7 +76,6 @@ class GaussianRegressor(Regressor):
     @torch.inference_mode()
     def predict(self, x):
         return self.forward(x)
-
 
     def update(self, loss, optimizer, scaler, step=None, total_steps=None):
 

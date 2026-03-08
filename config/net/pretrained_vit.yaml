@@ -1,20 +1,20 @@
-_target_: PretrainedViT
+_target_: src.networks.PretrainedViT
 backbone_dir: runs/pretraining_micro/huge_775
 frozen: True
-drop_head: True
+drop_head: True # depracated?
+use_head: False
 interp_pos_encoding: False
 
 add_head: False
 head:
   _target_: src.networks.MLP
-  cfg:
-    units:
-      - 144
-      - 144
-      - 6
-    act: relu
-    out_act: sigmoid
-    drop: 0.
+  in_channels: 144
+  hidden_channels:
+    - 144
+  out_channels: 6
+  act: relu
+  out_act: sigmoid
+  drop: 0.
 
 adapt_res: False
 adaptor:

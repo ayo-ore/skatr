@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 from functools import partial
-from hydra.utils import instantiate
+from omegaconf import OmegaConf
 from torch.utils.checkpoint import checkpoint
 from typing import List, Optional
 from src.utils import masks
@@ -40,7 +40,7 @@ class ViT(nn.Module):
         adaptor: Optional[nn.Module] = None,
         use_input_conv: bool = False,
         input_conv: Optional[nn.Module] = None,
-        in_dim: Optional[int] = None
+        in_dim: Optional[int] = None,
     ):
 
         super().__init__()
@@ -58,7 +58,7 @@ class ViT(nn.Module):
         # embedding layer
         self.patch_dim = math.prod(patch_shape) * in_channels
         self.embedding = nn.Linear(self.patch_dim, hidden_dim)
-        
+
         # position encoding
         fourier_dim = hidden_dim // 6  # sin/cos features for each dim
         w = torch.arange(fourier_dim) / (fourier_dim - 1)
@@ -104,8 +104,8 @@ class ViT(nn.Module):
         if use_mask_token:
             self.mask_token = nn.Parameter(torch.randn(hidden_dim))
 
-        self.in_dim = in_dim # used by PredictorViT subclass
-    
+        self.in_dim = in_dim  # used by PredictorViT subclass
+
     def init_adaptor(self, cfg):
 
         # downsampling conv
@@ -116,9 +116,7 @@ class ViT(nn.Module):
 
         use_relu = True
         if cfg.replace_embedding:
-            self.embedding = nn.Linear(
-                cfg.channels * self.patch_dim, self.hidden_dim
-            )
+            self.embedding = nn.Linear(cfg.channels * self.patch_dim, self.hidden_dim)
         elif cfg.extra_proj:
             self.extra_proj = nn.Linear(cfg.channels * self.patch_dim, self.patch_dim)
         else:
@@ -414,45 +412,61 @@ class PretrainedViT(ViT):
     A class for initializing pretrained ViTs.
     """
 
-    def __init__(self, cfg):
+    # TODO: Move all this initialization to base model __init__
 
-        # read backbone config
-        bb_dir = cfg.backbone_dir
-        bcfg = get_prev_config(bb_dir)
+    def __init__(
+        self,
+        backbone_dir: str,
+        frozen: bool = True,
+        drop_head: bool = True,
+        add_head: bool = False,
+        head: Optional[nn.Module] = None,
+        adapt_res: bool = False,
+        adaptor=None,
+        use_input_conv: bool = False,
+        input_conv=None,
+        interp_pos_encoding: bool = False,
+        data_shape=None,
+        **kwargs,
+    ):
 
-        # load backbone state
-        model_state = torch.load(os.path.join(bb_dir, "model.pt"), weights_only=False)[
-            "model"
-        ]
+        # read backbone config & state
+        bcfg = get_prev_config(backbone_dir)
+        model_state = torch.load(
+            os.path.join(backbone_dir, "model.pt"), weights_only=False
+        )["model"]
         net_state = {
             k.replace("net.", ""): v
             for k, v in model_state.items()
             if k.startswith("net.")
         }
 
-        # initialize network and load weights
-        super().__init__(bcfg.net)
+        # initialize ViT from saved net config, with current overrides
+        saved_net_cfg = OmegaConf.to_object(bcfg.net)
+        saved_net_cfg.pop("_target_", None)
+        saved_net_cfg.update(kwargs)
+        super().__init__(**saved_net_cfg)
         self.load_state_dict(net_state)
 
         # delete the head module used in pretraining
-        if cfg.drop_head and hasattr(self, "head"):
+        if drop_head and hasattr(self, "head"):
             del self.head
 
         # freeze weights and set to eval mode
-        if cfg.frozen:
+        if frozen:
             for p in self.parameters():
                 p.requires_grad = False
             self.eval()
 
         # init new head or input adaption if needed
-        if cfg.add_head:
-            self.head = instantiate(cfg.head)
-        if cfg.adapt_res:
-            self.init_adaptor(cfg.adaptor)
-        if cfg.use_input_conv:
-            self.init_input_conv(cfg.input_conv)
-        if cfg.interp_pos_encoding:
-            self.bb.init_pos_grid(cfg.data_shape)
+        if add_head and head is not None:
+            self.head = head
+        if adapt_res and adaptor is not None:
+            self.init_adaptor(adaptor)
+        if use_input_conv and input_conv is not None:
+            self.init_input_conv(input_conv)
+        if interp_pos_encoding and data_shape is not None:
+            self.init_pos_grid(data_shape)
 
 
 def check_shapes(in_shape: int, patch_shape: int, hidden_dim: int):

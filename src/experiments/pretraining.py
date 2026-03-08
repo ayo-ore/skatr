@@ -6,26 +6,9 @@ from src.utils.collators import JEPACollator
 
 class PretrainingExperiment(TrainingExperiment):
 
-    # def get_dataset(self, directory):
-    #     prep = self.preprocessing
-    #     if self.cfg.data.file_by_file:
-    #         return LightconeDatasetByFile(
-    #             self.cfg.data, directory, preprocessing=prep, use_labels=False
-    #         )
-    #     else:
-    #         return LightconeDataset(
-    #             self.cfg.data,
-    #             directory,
-    #             self.device,
-    #             preprocessing=prep,
-    #             use_labels=False,
-    #         )
+    supervised: bool = False
 
-    # def get_model(self):
-    #     model_cls = getattr(models, self.cfg.model)
-    #     return model_cls(self.cfg)
-
-    def get_collator(self):
+    def get_collator(self, training):
         """Perform preprocessing and masking on CPU. Avoids GPU sync during training."""
 
         num_patches = tuple(

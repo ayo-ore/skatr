@@ -1,17 +1,21 @@
 run_name: pretraining_micro
-experiment:
-  _target_: src.experiments.PretrainingExperiment
 evaluate: False
 plot: False
 
+experiment:
+  _target_: src.experiments.PretrainingExperiment
+  
 model:
   _target_: src.models.JEPA
+  net: ${net}
+  predictor: ${predictor}
+  sim: l1
+  init_tgt_as_ctx: True
+  momentum_schedule: True
+  ema_momentum: 0.9997
+  summary_net: ${summary_net}
 
-ema_momentum: 0.9997
-momentum_schedule: True
-sim: l1
 augment: False
-init_tgt_as_ctx: True
 
 net: # encoders
   use_mask_token: False

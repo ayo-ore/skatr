@@ -1,24 +1,34 @@
 import torch.nn as nn
 import torch.nn.functional as F
 from itertools import pairwise
+from typing import List, Optional
 from omegaconf import DictConfig
 
 
 class MLP(nn.Module):
 
-    def __init__(self, cfg: DictConfig):
+    def __init__(
+        self,
+        in_channels,
+        hidden_channels,
+        out_channels,
+        act: str = "relu",
+        out_act: Optional[str] = None,
+        drop: float = 0.0,
+    ):
 
         # units, act, drop=None
 
         super(MLP, self).__init__()
 
-        self.cfg = cfg
+        self.out_channels = out_channels
+        units = [in_channels, *hidden_channels, out_channels]
         self.linear_layers = nn.ModuleList(
-            [nn.Linear(a, b) for a, b in pairwise(cfg.units)]
+            [nn.Linear(a, b) for a, b in pairwise(units)]
         )
-        self.act = getattr(F, cfg.act)
-        self.out_act = getattr(F, cfg.out_act) if cfg.out_act else None
-        self.drop = nn.Dropout(cfg.drop) if cfg.drop else None
+        self.act = getattr(F, act)
+        self.out_act = getattr(F, out_act) if out_act else None
+        self.drop = nn.Dropout(drop) if drop else None
 
     def forward(self, x):
 

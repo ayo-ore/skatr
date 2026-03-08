@@ -1,10 +1,13 @@
 run_name: regression_${dataset.name}
+
 experiment:
   _target_: src.experiments.RegressionExperiment
+
 model:
   _target_: src.models.Regressor
-  
-loss: l1
+  loss: l1
+  net: ${net}
+  summary_net: ${summary_net}
 
 cluster:
   queue: a30
@@ -13,7 +16,6 @@ data:
   target_indices: [0,1,2,3,4,5]
 
 net:
-  use_head: True
   out_channels: 6 # length of target_indices
 
 training:

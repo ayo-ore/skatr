@@ -10,21 +10,10 @@ from src.utils.collators import SupervisedCollator
 from src.utils.plotting import PARAM_NAMES
 from src.utils.utils import ensure_device
 
+
 class RegressionExperiment(TrainingExperiment):
 
-    # def get_dataset(self, directory):
-    #     prep = self.preprocessing
-    #     if self.cfg.data.file_by_file:
-    #         return LightconeDatasetByFile(
-    #             self.cfg.data, directory, preprocessing=prep
-    #         )
-    #     else:
-    #         return LightconeDataset(
-    #             self.cfg.data, directory, self.device, preprocessing=prep
-    #         )
-
-    # def get_model(self):
-    # return (GaussianRegressor if self.cfg.gaussian else Regressor)(self.cfg)
+    supervised: bool = True
 
     def get_collator(self, training):
         """Perform preprocessing and masking on CPU. Avoids GPU sync during training."""
@@ -52,11 +41,11 @@ class RegressionExperiment(TrainingExperiment):
 
             # predict
             if self.gaussian:
-                pred, std = self.model.predict(batch.images)
+                pred, std = self.model.predict(batch)
                 pred = pred.detach().cpu()
                 std = std.detach().cpu()
             else:
-                pred = self.model.predict(batch.images).detach().cpu()
+                pred = self.model.predict(batch).detach().cpu()
 
             # postprocess output
             for transform in reversed(self.preprocessing["y"]):

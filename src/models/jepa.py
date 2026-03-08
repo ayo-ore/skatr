@@ -1,28 +1,38 @@
 import copy
 import torch
 import torch.nn.functional as F
-from hydra.utils import instantiate
-from omegaconf import DictConfig
 
-from src import networks
 from src.models.base_model import Model
 from src.utils import augmentations, masks
 
 
 class JEPA(Model):
 
-    def __init__(self, cfg: DictConfig):
-        super().__init__(cfg)
-        self.predictor = instantiate(cfg.predictor)
+    def __init__(
+        self,
+        net,
+        predictor,
+        sim="l1",
+        ema_momentum=0.9997,
+        momentum_schedule=True,
+        init_tgt_as_ctx=True,
+        summary_net=None,
+    ):
+        super().__init__(net=net, summary_net=summary_net)
+        self.predictor = predictor
+        self.ema_momentum = ema_momentum
+        self.momentum_schedule = momentum_schedule
         self.ctx_encoder = self.net
-        self.tgt_encoder = (
-            copy.deepcopy(self.ctx_encoder)
-            if cfg.init_tgt_as_ctx
-            else instantiate(cfg.net)
-        )
+        self.tgt_encoder = copy.deepcopy(self.ctx_encoder)
+        if not init_tgt_as_ctx:
+            # re-initialize weights
+            for module in self.tgt_encoder.modules():
+                if hasattr(module, "reset_parameters"):
+                    module.reset_parameters()
+
         self.augment = augmentations.RotateAndReflect()
 
-        match cfg.sim:
+        match sim:
             case "l2":
                 self.sim = lambda x1, x2: -F.mse_loss(x1, x2)
             case "l1":
@@ -54,14 +64,16 @@ class JEPA(Model):
 
         return loss
 
-    def update(self, loss, optimizer, scaler, step=None, total_steps=None):
+    def update(
+        self, loss, optimizer, scaler, step=None, total_steps=None, gradient_norm=None
+    ):
 
         # student update
-        super().update(loss, optimizer, scaler)
+        super().update(loss, optimizer, scaler, gradient_norm=gradient_norm)
 
         # teacher update via exponential moving average of student
-        tau = self.cfg.ema_momentum
-        if self.cfg.momentum_schedule:  # linear increase to tau=1
+        tau = self.ema_momentum
+        if self.momentum_schedule:  # linear increase to tau=1
             frac = step / total_steps
             tau = tau + (1 - tau) * frac
 

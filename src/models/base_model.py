@@ -5,8 +5,6 @@ import logging
 
 from abc import abstractmethod
 from collections import defaultdict
-from hydra.utils import instantiate
-from omegaconf import DictConfig
 
 from src.utils.dataset import LightconeData
 
@@ -15,38 +13,35 @@ log = logging.getLogger("Model")
 
 class Model(nn.Module):
 
-    def __init__(self, cfg: DictConfig):
+    def __init__(self, net, summary_net=None):
 
         super().__init__()
 
-        self.cfg = cfg
-
-        # initialize networks
-
-        # optionally initialize a summary network
-        if cfg.summary_net is not None:
+        if summary_net is not None:
             log.info("Loading summary network")
-            self.summary_net = instantiate(cfg.summary_net)
+            self.summary_net = summary_net
             log.info(
                 f"Summary net ({self.summary_net.__class__.__name__}) has "
                 f"{sum(w.numel() for w in self.summary_net.parameters())} parameters"
             )
 
         # TODO: Automatically set head input dim to backbone embedding dim
-        self.net = instantiate(cfg.net)
-        
+        self.net = net
+
         # logging
         self.log_buffer = defaultdict(list)
 
     @abstractmethod
-    def batch_loss(self, batch:LightconeData, training=True):
+    def batch_loss(self, batch: LightconeData, training=True):
         pass
 
     @property
     def trainable_parameters(self):
         return (p for p in self.parameters() if (p.requires_grad and p.numel() > 0))
 
-    def update(self, loss, optimizer, scaler, step=None, total_steps=None):
+    def update(
+        self, loss, optimizer, scaler, step=None, total_steps=None, gradient_norm=None
+    ):
 
         # zero parameter gradients
         optimizer.zero_grad(set_to_none=True)
@@ -58,7 +53,7 @@ class Model(nn.Module):
         loss.backward()
 
         # optionally clip gradients
-        if clip := self.cfg.training.gradient_norm:
+        if clip := gradient_norm:
             scaler.unscale_(optimizer)
             grad_norm = nn.utils.clip_grad_norm_(self.trainable_parameters, clip)
             self.log_scalar(grad_norm, "gradient_norm")

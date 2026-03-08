@@ -1,10 +1,18 @@
+import logging
 import numpy as np
 import os
 import torch
+
 from glob import glob
 from functools import partial
-from tqdm.contrib.concurrent import process_map
 from tensordict import MemoryMappedTensor, tensorclass
+from torch import nn
+from torch.utils.data import DataLoader
+from tqdm.contrib.concurrent import process_map
+from typing import Optional
+
+from src.utils.collators import SummarizationCollator
+from src.utils.utils import ensure_device
 
 KEYS = (
     "image",  # keys present in your npz files, you could add more...
@@ -16,6 +24,9 @@ DTYPES = {
     "label": torch.float32,
 }
 
+log = logging.getLogger(__name__)
+
+
 @tensorclass
 class LightconeData:
     """
@@ -23,15 +34,17 @@ class LightconeData:
     'labels', shape (N_data, N_params): parameter vector
     """
 
-    images: torch.Tensor
-    labels: torch.Tensor
+    images: Optional[torch.Tensor] = None
+    labels: Optional[torch.Tensor] = None
+    summaries: Optional[torch.Tensor] = None
 
     @classmethod
-    def from_memmap(
+    def read(
         cls,
         path: str,
         shapes: dict,
         num_workers: int = 4,
+        summary_cfg: Optional[dict] = None,
     ):
         """
         Read lightcone data as memory-mapped tensors. If the memory map does not yet exist, it will
@@ -50,22 +63,82 @@ class LightconeData:
         tensors = {}
         for k in KEYS:
 
-            ks = k + "s" # plural naming is nicer
+            ks = k + "s"  # plural naming is nicer
 
             filename = os.path.join(path, ks + ".memmap")
             dtype = DTYPES[k]
             shape = (size, *shapes[k])
             if os.path.exists(filename):  # read memmap from disk
 
-                print(f"Reading memmap '{os.path.basename(filename)}' from disk")
-                tensors[ks] = MemoryMappedTensor.from_filename(
+                log.info(f"Reading memmap '{os.path.basename(filename)}'")
+                mmap = MemoryMappedTensor.from_filename(
                     filename=filename,
                     dtype=dtype,
                     shape=shape,
                 )
+
+                summarize = summary_cfg is not None
+                if summarize and (ks == "images"):
+
+                    log.info(
+                        "Summarizing lightcones"
+                        + (
+                            " (with augmentations)"
+                            if summary_cfg["augmentations"]
+                            else ""
+                        )
+                    )
+
+                    # create dataloader
+                    loader = DataLoader(
+                        mmap,
+                        batch_size=summary_cfg["batch_size"],
+                        num_workers=num_workers,
+                        collate_fn=SummarizationCollator(
+                            preprocessing=summary_cfg["preprocessing"], training=False
+                        ),
+                    )
+
+                    device = torch.device(summary_cfg["device"])
+                    summary_net = summary_cfg["net"]
+
+                    # summarize lightcones
+                    summaries = []
+                    for batch in loader:
+
+                        batch = ensure_device(batch, device)
+                        with torch.no_grad(), torch.autocast(
+                            device.type, enabled=summary_cfg["use_amp"]
+                        ):
+                            # embed with pretrained net
+                            if not summary_cfg["augmentations"]:
+                                summary = summary_net(batch).to(device)  # use embed?
+                            else:
+                                summary = torch.stack(  # collect all augmentations of lightcones
+                                    [
+                                        summary_net(abatch).to(device)  # use embed?
+                                        for abatch in aug.enumerate(batch)
+                                    ],
+                                    dim=1,
+                                )
+
+                            if summary_cfg["pool"]:
+                                # one summary per lightcone
+                                summary = summary.mean(-2)
+                            summaries.append(summary)
+
+                    summaries = torch.vstack(summaries).cpu()
+
+                    tensors["summaries"] = summaries
+
+                    log.info("Finished summarizing lightcones")
+
+                else:
+                    tensors[ks] = mmap
+
             else:  # or write new memmap to disk
 
-                print(f"Writing memmap '{os.path.basename(filename)}' to disk")
+                log.info(f"Writing memmap '{os.path.basename(filename)}'")
 
                 tensors[ks] = MemoryMappedTensor.empty(  # placeholder
                     filename=filename,
@@ -87,7 +160,7 @@ class LightconeData:
 # worker function for parallel processing
 def worker_func(i, key, files, tensors):
     arr = np.load(files[i])[key]
-    tensors[key+"s"][i] = torch.from_numpy(arr)
+    tensors[key + "s"][i] = torch.from_numpy(arr)
 
 
 # class SummarizedLightconeDataset(Dataset):

@@ -5,13 +5,11 @@ from hydra.utils import instantiate
 from .config import get_prev_config
 
 
-def load_model(path, model_cls=None, device=None, freeze=True):
+def load_model(path, device=None, freeze=True):
 
     cfg = get_prev_config(path)
 
-    # TODO: tidy this to just use instantiate
-    model = model_cls(cfg) if model_cls is not None else instantiate(cfg.model, cfg=cfg)
-    # model = instantiate(cfg.model, cfg=cfg)
+    model = instantiate(cfg.model)
     sdict = torch.load(path + "/model.pt", weights_only=False, map_location="cpu")
 
     # load (and optionally freeze) weights
@@ -29,6 +27,7 @@ def load_model(path, model_cls=None, device=None, freeze=True):
 
     return model, cfg
 
+
 def ensure_device(x, device):
     """Recursively send tensors within nested structure to device"""
     if isinstance(x, list):
@@ -38,4 +37,3 @@ def ensure_device(x, device):
     elif x.device != device:
         return x.to(device=device, non_blocking=True)
     return x
-        

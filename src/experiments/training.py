@@ -2,7 +2,7 @@ import torch
 import os
 import numpy as np
 from abc import abstractmethod
-from hydra.utils import call, instantiate
+from hydra.utils import instantiate
 from torch.utils.data import DataLoader, random_split
 
 from src.experiments.base_experiment import BaseExperiment
@@ -31,18 +31,17 @@ class TrainingExperiment(BaseExperiment):
                 f"Loaded augmentations: {', '.join([a.__class__.__name__ for a in self.augmentations])}"
             )
 
-        if self.cfg.train or self.cfg.evaluate:
-            # initialize dataloaders
-            self.log.info("Creating dataLoaders")
-            self.dataloaders = dict(
-                zip(("train", "val", "test"), self.init_dataloader(training=True))
-            )
-
         if self.cfg.train:
 
             # model
             if not hasattr(self, "model"):
                 self.init_model()
+
+            # dataloaders
+            self.log.info("Creating dataLoaders")
+            self.dataloaders = dict(
+                zip(("train", "val", "test"), self.init_dataloader(training=True))
+            )
 
             # train model
             self.log.info("Running training")
@@ -63,6 +62,14 @@ class TrainingExperiment(BaseExperiment):
             # model
             if not hasattr(self, "model"):
                 self.init_model()
+
+            if not hasattr(self, "dataloaders"):
+                self.log.info("Creating dataLoaders")
+                self.dataloaders = dict(
+                    zip(
+                        ("train", "val", "test"), self.init_dataloader(training=False)
+                    )  # TODO: depracate training argument
+                )
 
             # load model state
             self.log.info(f"Loading model state from {self.exp_dir}.")
@@ -86,7 +93,16 @@ class TrainingExperiment(BaseExperiment):
     def init_model(self):
         self.log.info("Initializing model")
 
-        self.model = call(self.cfg.model, self.cfg)
+        # TODO address further summarization conditions: could also be backbone finetuning
+
+        if self.supervised:
+            summarize = not ((self.cfg.summary_net is None) or self.cfg.data.summarize)
+            summarize_kwarg = {"summarize": summarize}
+        else:
+            summarize_kwarg = {}
+
+        self.model = instantiate(self.cfg.model, **summarize_kwarg)
+
         self.model = self.model.to(self.device)
         model_name = (
             f"{self.model.__class__.__name__}[{self.model.net.__class__.__name__}]"
@@ -100,16 +116,28 @@ class TrainingExperiment(BaseExperiment):
         tcfg = self.cfg.training
         dscfg = self.cfg.dataset
 
+        if dcfg.summarize:
+            summary_cfg = {
+                "net": self.model.summary_net,
+                "batch_size": dcfg.summary_batch_size,
+                "pool": True,  # TODO: Change pooling logic for AttentiveHead
+                "preprocessing": self.preprocessing,
+                "augmentations": self.augmentations if tcfg.augment else None,
+                "device": self.device,
+                "use_amp": self.cfg.training.use_amp,
+            }
+        else:
+            summary_cfg = None
+
         # read data
-        dset = LightconeData.from_memmap(
+        dset = LightconeData.read(
             dscfg.dir,
             shapes=dict(label=[dscfg.num_params], image=dscfg.image_shape),
             num_workers=dcfg.num_workers,
+            summary_cfg=summary_cfg,
         )
 
-        # # preprocess (on cpu)
-        # for transform in self.process.transforms:
-        #     dset = transform.forward(dset)
+        # TODO: free summary net from memory
 
         # optionally move dataset to gpu
         on_gpu = dcfg.on_gpu and self.cfg.use_gpu

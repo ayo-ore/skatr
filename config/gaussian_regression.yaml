@@ -1,11 +1,14 @@
 run_name: regression_${dataset.name}
+
 experiment:
   _target_: src.experiments.RegressionExperiment
+
 model:
   _target_: src.models.GaussianRegressor
-  
-loss: l1
-const_sigma_frac: 0.0
+  loss: l1
+  const_sigma_frac: 0.0
+  net: ${net}
+  summary_net: ${summary_net}
 
 cluster:
   queue: a30
