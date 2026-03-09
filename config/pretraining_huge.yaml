@@ -5,7 +5,7 @@ net:
 
 training:
   scheduler:
-    _target_: OneCycleLR
+    _target_: torch.optim.lr_scheduler.OneCycleLR
     max_lr: 0.001
 
 defaults:

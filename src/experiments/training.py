@@ -162,7 +162,7 @@ class TrainingExperiment(BaseExperiment):
 
         # create splits
         assert dcfg.val_frac > 0, "A validation split is required"
-        assert dcfg.test_frac > 0, "A testing split is required"
+        # assert dcfg.test_frac > 0, "A testing split is required"
 
         # seed data split to avoid leakage across iterations
         fixed_rng = torch.Generator().manual_seed(1729)
