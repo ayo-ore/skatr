@@ -104,7 +104,7 @@ class TrainingExperiment(BaseExperiment):
                 "batch_size": dcfg.summary_batch_size,
                 "pool": True,  # TODO: Change pooling logic for AttentiveHead
                 "preprocessing": self.preprocessing,
-                "augmentations": self.augmentations if tcfg.augment else None,
+                "augment": tcfg.augment,
                 "device": self.device,
                 "use_amp": self.cfg.training.use_amp,
             }

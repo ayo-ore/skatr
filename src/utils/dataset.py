@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from tqdm.contrib.concurrent import thread_map
 from typing import Optional
 
+from src.utils.augmentations import RotateAndReflect
 from src.utils.collators import SummarizationCollator
 from src.utils.utils import ensure_device
 
@@ -111,12 +112,13 @@ class LightconeData:
                             device.type, enabled=summary_cfg["use_amp"]
                         ):
                             # embed with pretrained net
-                            if not summary_cfg["augmentations"]:
-                                summary = summary_net(batch).to(device)  # use embed?
+                            if not summary_cfg["augment"]:
+                                summary = summary_net(batch).to(device)
                             else:
+                                aug = RotateAndReflect(include_identity=True)
                                 summary = torch.stack(  # collect all augmentations of lightcones
                                     [
-                                        summary_net(abatch).to(device)  # use embed?
+                                        summary_net(abatch).to(device)
                                         for abatch in aug.enumerate(batch)
                                     ],
                                     dim=1,
