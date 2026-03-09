@@ -1,4 +1,4 @@
-run_name: pretraining_micro
+run_name: pretraining_${dataset.name}
 evaluate: False
 plot: False
 
@@ -11,11 +11,8 @@ model:
   predictor: ${predictor}
   sim: l1
   init_tgt_as_ctx: True
-  momentum_schedule: True
+  momentum_schedule: False
   ema_momentum: 0.9997
-  summary_net: ${summary_net}
-
-augment: False
 
 net: # encoders
   use_mask_token: False
@@ -34,9 +31,13 @@ predictor:
   patch_shape: ${net.patch_shape}
 
 data:
-  use_test_dir: True
+  test_frac: 0.
 
 training:
+  augment: True
+  augmentations:
+    - {_target_: src.utils.augmentations.RotateAndReflect, include_identity: True}
+    - {_target_: src.utils.augmentations.Shift}
   epochs: 1000
   lr: 0.001
   batch_size: 64

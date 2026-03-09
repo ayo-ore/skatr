@@ -1,35 +1,23 @@
 import torch
-import os
-import numpy as np
 from abc import abstractmethod
 from hydra.utils import instantiate
 from torch.utils.data import DataLoader, random_split
 
 from src.experiments.base_experiment import BaseExperiment
 from src.utils.dataset import LightconeData
+from src.utils.collators import IdentityCollator
 from src.utils.trainer import Trainer
-from src.utils import augmentations
 
 
 class TrainingExperiment(BaseExperiment):
 
     def run(self):
 
-        # initialize preprocessing transforms (for data and targets)
-        self.preprocessing = {
-            k: [instantiate(t) for t in ts] for k, ts in self.cfg.preprocessing.items()
-        }
-        transform_names = {
-            k: [t.__class__.__name__ for t in ts]
-            for k, ts in self.preprocessing.items()
-        }
-        self.log.info(f"Loaded preprocessing dict: {transform_names}")
+        # initialize preprocessing transforms
+        self.init_preprocessing()
 
-        self.augmentations = self.get_augmentations()
-        if self.augmentations:
-            self.log.info(
-                f"Loaded augmentations: {', '.join([a.__class__.__name__ for a in self.augmentations])}"
-            )
+        # initialize data augmentations
+        self.init_augmentations()
 
         if self.cfg.train:
 
@@ -39,9 +27,7 @@ class TrainingExperiment(BaseExperiment):
 
             # dataloaders
             self.log.info("Creating dataLoaders")
-            self.dataloaders = dict(
-                zip(("train", "val", "test"), self.init_dataloader(training=True))
-            )
+            self.dataloaders = self.init_dataloaders()
 
             # train model
             self.log.info("Running training")
@@ -65,11 +51,7 @@ class TrainingExperiment(BaseExperiment):
 
             if not hasattr(self, "dataloaders"):
                 self.log.info("Creating dataLoaders")
-                self.dataloaders = dict(
-                    zip(
-                        ("train", "val", "test"), self.init_dataloader(training=False)
-                    )  # TODO: depracate training argument
-                )
+                self.dataloaders = self.init_dataloaders()
 
             # load model state
             self.log.info(f"Loading model state from {self.exp_dir}.")
@@ -110,7 +92,7 @@ class TrainingExperiment(BaseExperiment):
         num_params = sum(w.numel() for w in self.model.trainable_parameters)
         self.log.info(f"Model ({model_name}) has {num_params} trainable parameters")
 
-    def init_dataloader(self, training=False):
+    def init_dataloaders(self, training=True):
 
         dcfg = self.cfg.data
         tcfg = self.cfg.training
@@ -155,7 +137,7 @@ class TrainingExperiment(BaseExperiment):
         use_mp = self.cfg.train and num_workers > 0
         for i, d in enumerate(dsets):
 
-            is_train_split = (i == 0) and training
+            is_train_split = (i == 0) and training  # set training=False to save preds
             batch_size = tcfg.batch_size if is_train_split else tcfg.test_batch_size
 
             dataloaders.append(
@@ -172,7 +154,7 @@ class TrainingExperiment(BaseExperiment):
                 )
             )
 
-        return dataloaders
+        return dict(zip(("train", "val", "test"), dataloaders))
 
     def split_dataset(self, dset):
 
@@ -192,13 +174,24 @@ class TrainingExperiment(BaseExperiment):
 
         return list(splits)
 
-    def get_augmentations(self):
-        augs = []
+    def init_preprocessing(self):
+        self.preprocessing = instantiate(self.cfg.preprocessing)
+        transform_names = {
+            k: [t.__class__.__name__ for t in ts]
+            for k, ts in self.preprocessing.items()
+        }
+        self.log.info(f"Loaded preprocessing dict: {transform_names}")
+
+    def init_augmentations(self):
+
         if self.cfg.training.augment and not self.cfg.data.summarize:
-            for name, kwargs in self.cfg.training.augmentations.items():
-                aug = getattr(augmentations, name)(**kwargs)
-                augs.append(aug)
-        return augs
+            self.augmentations = instantiate(self.cfg.training.augmentations)
+            self.log.info(
+                f"Loaded augmentations: {', '.join([a.__class__.__name__ for a in self.augmentations])}"
+            )
+        else:
+            self.augmentations = []
+            self.log.info(f"Not using data augmentation")
 
     def get_collator(self):
         """Perform experiment-specific collation. Can help to avoid CPU-GPU sync during training."""

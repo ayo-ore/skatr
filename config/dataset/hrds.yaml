@@ -2,3 +2,10 @@ name: hrds
 dir: /remote/gpu02/ore/data/x5
 image_shape: [28, 28, 470]
 num_params: 6
+param_names:
+    - $m_{WDM}$
+    - $\Omega_m$
+    - $E_0$
+    - $\log_{10}L_X$
+    - $\log_{10}T_{vir}$
+    - $\zeta$

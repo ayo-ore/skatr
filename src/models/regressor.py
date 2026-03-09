@@ -38,7 +38,7 @@ class Regressor(Model):
             ):  # TODO: Clean
                 x = x.mean(1)  # (B, T, D) --> (B, D)
 
-        elif self.summary_net is not None:
+        elif hasattr(self, "summary_net"):
             x = batch.summaries
         else:
             x = batch.images

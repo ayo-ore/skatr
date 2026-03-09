@@ -7,7 +7,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from src.experiments.training import TrainingExperiment
 from src.utils.collators import SupervisedCollator
-from src.utils.plotting import PARAM_NAMES
 from src.utils.utils import ensure_device
 
 
@@ -164,7 +163,7 @@ class RegressionExperiment(TrainingExperiment):
 
                 # axis labels
                 param_idx = self.cfg.data.target_indices[i]
-                main_ax.set_title(PARAM_NAMES[param_idx], fontsize=14)
+                main_ax.set_title(self.cfg.dataset.param_names[param_idx], fontsize=14)
                 main_ax.set_ylabel("Network", fontsize=13)
                 ratio_ax.set_ylabel(
                     r"$\left|\frac{\text{Net}\,-\,\text{True}}{\text{True}}\right|$",

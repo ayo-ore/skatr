@@ -21,7 +21,6 @@ data:
   sequential_splits: False
   on_gpu: False
   num_workers: 4
-  use_test_dir: False
   summarize: False
   summary_batch_size: 150
 
@@ -37,7 +36,7 @@ training:
   scheduler: {}
   augment: True
   augmentations:
-    RotateAndReflect: {include_identity: True}
+    - {_target_: src.utils.augmentations.RotateAndReflect, include_identity: True}
   augment_test: False
   gradient_norm: null
   validate_freq: 1

@@ -52,6 +52,25 @@ class RotateAndReflect:
 
         return outs
 
+class Shift:
+    """
+    Random shift, assuming periodic boundaries.
+    Expects lightcone shape (batch, channels, x, y, z)
+    """
+
+    def __call__(self, x):
+        """
+        :param x: A tensor containing a batch of lightcones.
+        """
+        # sample a translation for each spatial axis
+        shift_x = random.randint(0, x.size(2) - 1)
+        shift_y = random.randint(0, x.size(3) - 1)
+
+        x = x.roll(shift_x, dims=2)
+        x = x.roll(shift_y, dims=3)
+
+        return x
+
 
 class Upsample:
     """TODO: Fill docstring"""

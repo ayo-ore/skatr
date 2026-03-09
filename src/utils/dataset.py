@@ -8,7 +8,7 @@ from functools import partial
 from tensordict import MemoryMappedTensor, tensorclass
 from torch import nn
 from torch.utils.data import DataLoader
-from tqdm.contrib.concurrent import process_map
+from tqdm.contrib.concurrent import thread_map
 from typing import Optional
 
 from src.utils.collators import SummarizationCollator
@@ -146,11 +146,10 @@ class LightconeData:
                     shape=shape,
                 )
 
-                process_map(  # fill in parallel
+                thread_map(  # fill in parallel
                     partial(worker_func, key=k, files=files, tensors=tensors),
                     range(size),
-                    max_workers=num_workers,
-                    chunksize=1,
+                    max_workers=4,
                 )
 
         # return tensorclass dataset

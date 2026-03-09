@@ -1,0 +1,13 @@
+net:
+  depth: 6
+  hidden_dim: 360
+  num_heads: 6
+
+training:
+  scheduler:
+    _target_: OneCycleLR
+    max_lr: 0.001
+
+defaults:
+  - pretraining
+  - _self_
