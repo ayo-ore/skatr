@@ -83,11 +83,7 @@ class LightconeData:
 
                     log.info(
                         "Summarizing lightcones"
-                        + (
-                            " (with augmentations)"
-                            if summary_cfg["augmentations"]
-                            else ""
-                        )
+                        + (" (with augmentations)" if summary_cfg["augment"] else "")
                     )
 
                     # create dataloader
